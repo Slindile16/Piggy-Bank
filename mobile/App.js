@@ -24,6 +24,46 @@ export default function App() {
   const [busy,setBusy] = useState(false);
   const [savedPlans,setSavedPlans] = useState([]);
   const [plansLoading,setPlansLoading] = useState(false);
+  const [deposits,setDeposits] = useState([]);
+  const [depositOpen,setDepositOpen] = useState(false);
+  const [depositPlanId,setDepositPlanId] = useState('');
+  const [depositAmount,setDepositAmount] = useState('');
+  const loadDeposits = async () => {
+    try {
+      const saved=await sessionStore.get();
+      if(!saved) return;
+      const response=await fetch(API_URL+'/api/v1/savings/deposits',{headers:{Authorization:'Bearer '+saved}});
+      const data=await response.json();
+      if(!response.ok) throw new Error(data.error||'Unable to load activity.');
+      setDeposits(data.deposits||[]);
+    }catch(e){notify('Activity',e.message);}
+  };
+  const beginDeposit = planId => {
+    if(savedPlans.length===0) return notify('Create a plan first','You need a savings plan before adding a simulated deposit.');
+    setDepositPlanId(planId||savedPlans[0].id);
+    setDepositAmount('');
+    setDepositOpen(true);
+    setTab('Savings');
+    setSelectedPlan(null);
+  };
+  const submitDeposit = async () => {
+    const amount=Number(depositAmount);
+    if(!/^\\d+(\\.\\d{1,2})?$/.test(depositAmount.trim())||!Number.isFinite(amount)||amount<=0||amount>100000000)
+      return notify('Check amount','Enter an amount greater than R0, with at most two decimal places.');
+    if(!depositPlanId) return notify('Choose a plan','Select the savings plan to receive this deposit.');
+    setBusy(true);
+    try{
+      const saved=await sessionStore.get();
+      const response=await fetch(API_URL+'/api/v1/savings/deposits',{method:'POST',headers:{Authorization:'Bearer '+saved,'Content-Type':'application/json'},body:JSON.stringify({planId:depositPlanId,amount})});
+      const data=await response.json();
+      if(!response.ok) throw new Error(data.error||'Unable to add savings.');
+      setDepositOpen(false);
+      await Promise.all([loadPlans(),loadDeposits()]);
+      setTab('Home');
+      notify('Savings added',money(amount)+' was added to your plan in demo mode. No real money moved.');
+    }catch(e){notify('Unable to add savings',e.message);}
+    finally{setBusy(false);}
+  };
   const [selectedPlan,setSelectedPlan] = useState(null);
   const [planForm,setPlanForm] = useState({name:'',targetAmount:'',durationMonths:'6'});
   const loadPlans = async () => {
@@ -39,7 +79,7 @@ export default function App() {
     finally { setPlansLoading(false); }
   };
   const beginPlan = plan => {
-    setSelectedPlan(plan);
+    setDepositOpen(false);setSelectedPlan(plan);
     setPlanForm({name:'',targetAmount:'',durationMonths:String(plan.months||6)});
     setTab('Savings');
   };
@@ -67,7 +107,7 @@ export default function App() {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadDeposits();loadDeposits();return; }
         await sessionStore.remove();
       }
     } catch {}
@@ -87,8 +127,8 @@ export default function App() {
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setSelectedPlan(null);setScreen('login');};
-  const nav=target=>{setSelectedPlan(null);setTab(target);if(target==='Savings'||target==='Home')loadPlans();};
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setDepositOpen(false);setSelectedPlan(null);setScreen('login');};
+  const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity')loadDeposits();};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':undefined}>
@@ -112,15 +152,26 @@ export default function App() {
           {tab==='Home'&&<>
             <Text style={s.eyebrow}>GOOD TO HAVE YOU HERE</Text><Text style={s.title}>Hello, {user?.firstName||'Saver'} 👋</Text>
             <Text style={s.subtitle}>Your future is worth saving for.</Text>
-            <View style={s.balance}><Text style={s.balanceLabel}>TOTAL SAVINGS  ·  DEMO</Text><Text style={s.balanceAmount}>{money(savedPlans.reduce((sum,p)=>sum+Number(p.savedAmount||0),0))}</Text><View style={s.goldLine}/><Text style={s.balanceFoot}>{savedPlans.length} active plans    •    No deposits yet</Text></View>
+            <View style={s.balance}><Text style={s.balanceLabel}>TOTAL SAVINGS  ·  DEMO</Text><Text style={s.balanceAmount}>{money(savedPlans.reduce((sum,p)=>sum+Number(p.savedAmount||0),0))}</Text><View style={s.goldLine}/><Text style={s.balanceFoot}>{savedPlans.length} active plans    •    {deposits.length} demo deposits</Text></View>
             <Text style={s.sectionTitle}>Quick actions</Text>
-            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>beginPlan(plans[0])}><Text style={s.actionIcon}>＋</Text><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={demoMessage}><Text style={s.actionIcon}>↗</Text><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
+            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>beginPlan(plans[0])}><Text style={s.actionIcon}>＋</Text><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={()=>beginDeposit()}><Text style={s.actionIcon}>↗</Text><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
             <View style={s.sectionRow}><Text style={s.sectionTitle}>My savings plans</Text><TouchableOpacity onPress={()=>nav('Savings')}><Text style={s.greenLink}>Explore →</Text></TouchableOpacity></View>
             {savedPlans.length===0?<View style={s.empty}><Text style={s.emptyIcon}>🐷</Text><Text style={s.emptyTitle}>Your journey starts here</Text><Text style={s.emptyText}>Choose a savings plan to start building your future.</Text><Button label="Explore savings plans" onPress={()=>nav('Savings')}/></View>:savedPlans.map(p=><View key={p.id} style={s.plan}><Text style={s.planTitle}>{p.name}</Text><Text style={s.planDetail}>{p.durationMonths} months · Locked until {p.maturesOn}</Text><Text style={s.planDetail}>{money(p.savedAmount)} of {money(p.targetAmount)} saved</Text><View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*p.savedAmount/p.targetAmount))+'%'}]}/></View><Text style={s.planDetail}>{Math.round(100*p.savedAmount/p.targetAmount)}% complete · Suggested {money(p.targetAmount/p.durationMonths)}/month</Text></View>)}
           </>}
           {tab==='Savings'&&<>
+            {depositOpen&&<View style={s.panel}>
+              <TouchableOpacity onPress={()=>setDepositOpen(false)}><Text style={s.greenLink}>← Back to savings</Text></TouchableOpacity>
+              <Text style={[s.sectionTitle,{marginTop:20}]}>Add savings · Demo</Text>
+              <Text style={s.emptyText}>Choose a plan and enter any contribution amount. No real money will move.</Text>
+              <Text style={s.label}>Choose a savings plan</Text>
+              {savedPlans.map(p=><TouchableOpacity key={p.id} onPress={()=>setDepositPlanId(p.id)} style={[s.planChoice,depositPlanId===p.id&&s.planChoiceSelected]}><Text style={s.planTitle}>{depositPlanId===p.id?'◉ ':'○ '}{p.name}</Text><Text style={s.planDetail}>Saved {money(p.savedAmount)} · Target {money(p.targetAmount)}</Text></TouchableOpacity>)}
+              <Text style={s.label}>Deposit amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} placeholder="500" keyboardType="decimal-pad" value={depositAmount} onChangeText={setDepositAmount}/></View>
+              <View style={s.notice}><Text style={s.noticeText}>This is a simulated contribution. Deposits remain locked until the selected plan matures. No bank account or payment method is charged.</Text></View>
+              <Button label={busy?'Adding savings...':'Confirm simulated deposit'} disabled={busy} onPress={submitDeposit}/>
+            </View>}
+
             <Text style={s.eyebrow}>SAVE WITH PURPOSE</Text><Text style={s.title}>Savings plans</Text><Text style={s.subtitle}>Create as many locked savings plans as you need. All amounts are simulated.</Text>
-            {selectedPlan ? <View style={s.panel}>
+            {depositOpen ? null : selectedPlan ? <View style={s.panel}>
               <TouchableOpacity onPress={()=>setSelectedPlan(null)}><Text style={s.greenLink}>← Back to plans</Text></TouchableOpacity>
               <Text style={[s.sectionTitle,{marginTop:20}]}>{selectedPlan.title}</Text>
               <Text style={s.planDetail}>Your savings will be locked for {selectedPlan.type==='custom'?'your chosen duration':selectedPlan.months+' months'}.</Text>
@@ -133,12 +184,12 @@ export default function App() {
               {plans.map(p=><View key={p.type} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months?p.months+' MONTHS':'1–60 MONTHS'}</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings plan</Text><Button label="Choose plan" onPress={()=>beginPlan(p)} outline/></View>)}
               <Text style={s.sectionTitle}>Your saved plans ({savedPlans.length})</Text>
               {plansLoading&&<ActivityIndicator color={C.green}/>}
-              {savedPlans.map(p=><View key={p.id} style={s.plan}><Text style={s.planTitle}>{p.name}</Text><Text style={s.planDetail}>{p.durationMonths} months · Matures {p.maturesOn}</Text><Text style={s.planDetail}>Target: {money(p.targetAmount)} · Saved: {money(p.savedAmount)}</Text></View>)}
+              {savedPlans.map(p=><View key={p.id} style={s.plan}><Text style={s.planTitle}>{p.name}</Text><Text style={s.planDetail}>{p.durationMonths} months · Matures {p.maturesOn}</Text><Text style={s.planDetail}>Target: {money(p.targetAmount)} · Saved: {money(p.savedAmount)}</Text><Button label="Add savings" onPress={()=>beginDeposit(p.id)} outline/></View>)}
             </>}
           </>}
           {tab==='Activity'&&<>
             <Text style={s.eyebrow}>YOUR MONEY STORY</Text><Text style={s.title}>Activity</Text><Text style={s.subtitle}>Track your savings journey in one place.</Text>
-            <View style={s.empty}><Text style={s.emptyIcon}>◷</Text><Text style={s.emptyTitle}>No activity yet</Text><Text style={s.emptyText}>Your savings transactions will appear here once deposits are implemented.</Text></View>
+            {deposits.length===0?<View style={s.empty}><Text style={s.emptyIcon}>◷</Text><Text style={s.emptyTitle}>No activity yet</Text><Text style={s.emptyText}>Your simulated deposits will appear here.</Text></View>:deposits.map(d=><View key={d.id} style={s.activityRow}><View><Text style={s.planTitle}>{d.planName}</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')} · Demo deposit</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
           </>}
           {tab==='Profile'&&<>
             <Text style={s.eyebrow}>ACCOUNT & SECURITY</Text><Text style={s.title}>Your profile</Text><Text style={s.subtitle}>Manage your personal information and security settings.</Text>
@@ -179,6 +230,7 @@ const s=StyleSheet.create({
   security:{backgroundColor:C.white,borderWidth:1,borderColor:C.border,borderRadius:20,padding:22},securityBadge:{backgroundColor:'#F6EBD7',alignSelf:'flex-start',padding:7,borderRadius:8,marginBottom:13},securityBadgeText:{fontSize:10,fontWeight:'800',color:'#8A6429'},securityTitle:{fontSize:18,fontWeight:'900',color:C.forest,marginBottom:8},
   faceCircle:{height:178,width:178,borderRadius:89,borderWidth:3,borderColor:C.gold,backgroundColor:C.ivory,alignSelf:'center',alignItems:'center',justifyContent:'center',marginVertical:19},faceIcon:{fontSize:55,color:C.green},faceText:{fontSize:11,fontWeight:'700',color:C.forest},
   bottomNav:{flexDirection:'row',justifyContent:'space-around',backgroundColor:C.white,borderRadius:19,borderWidth:1,borderColor:C.border,paddingVertical:12,marginTop:15},navItem:{flex:1,alignItems:'center',paddingVertical:5},navActive:{backgroundColor:'#F0F6F1',borderRadius:12},navIcon:{fontSize:23,color:C.muted},navLabel:{fontSize:10,color:C.muted,marginTop:3},
+  planChoice:{borderWidth:1,borderColor:C.border,borderRadius:12,padding:13,marginBottom:10},planChoiceSelected:{borderColor:C.green,backgroundColor:'#EDF6EF'},activityRow:{backgroundColor:C.white,borderRadius:14,padding:17,marginBottom:10,borderWidth:1,borderColor:C.border,flexDirection:'row',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10},activityAmount:{fontSize:16,fontWeight:'900',color:C.green},
   amountRow:{flexDirection:'row',alignItems:'center',backgroundColor:C.ivory,borderWidth:1,borderColor:C.border,borderRadius:12,marginBottom:17},amountPrefix:{fontSize:16,fontWeight:'800',color:C.forest,paddingLeft:14,paddingRight:8},amountInput:{flex:1,paddingVertical:14,paddingRight:14,fontSize:15,color:C.dark},
   progressTrack:{height:9,backgroundColor:C.border,borderRadius:6,overflow:'hidden',marginTop:15},progressFill:{height:9,backgroundColor:C.green,borderRadius:6},
   footer:{textAlign:'center',color:'#94A199',fontSize:9,letterSpacing:1,marginTop:24}
