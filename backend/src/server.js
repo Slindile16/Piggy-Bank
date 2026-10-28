@@ -84,4 +84,61 @@ app.get('/api/v1/auth/me', async (req,res) => {
     return res.json({user:publicUser(result.rows[0])});
   } catch { return res.sendStatus(401); }
 });
+
+const planSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  planType: z.enum(['starter','builder','visionary','custom']),
+  durationMonths: z.number().int().min(1).max(60),
+  targetAmount: z.number().finite().positive().max(100000000)
+}).strict();
+const fixedDurations = { starter: 6, builder: 12, visionary: 18 };
+function authenticated(req,res,next) {
+  const bearer = req.headers.authorization?.match(/^Bearer (.+)$/);
+  if (!bearer) return res.sendStatus(401);
+  try {
+    const payload = jwt.verify(bearer[1],process.env.JWT_SECRET,{algorithms:['HS256']});
+    req.userId = payload.sub;
+    return next();
+  } catch { return res.sendStatus(401); }
+}
+function addMonths(date,months) {
+  const year = date.getUTCFullYear(), month = date.getUTCMonth(), day = date.getUTCDate();
+  const target = new Date(Date.UTC(year,month+months,1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(),target.getUTCMonth()+1,0)).getUTCDate();
+  target.setUTCDate(Math.min(day,lastDay));
+  return target.toISOString().slice(0,10);
+}
+function publicPlan(row) {
+  return {
+    id:row.id,name:row.name,planType:row.plan_type,durationMonths:row.duration_months,
+    targetAmount:Number(row.target_cents)/100,savedAmount:Number(row.saved_cents)/100,
+    startsOn:row.starts_on,maturesOn:row.matures_on,createdAt:row.created_at
+  };
+}
+app.get('/api/v1/savings/plans',authenticated,async(req,res)=>{
+  try {
+    const result=await db.query(
+      'SELECT id,name,plan_type,duration_months,target_cents,saved_cents,starts_on::text AS starts_on,matures_on::text AS matures_on,created_at FROM savings_plans WHERE user_id=$1 ORDER BY created_at DESC',
+      [req.userId]);
+    return res.json({plans:result.rows.map(publicPlan)});
+  } catch(e) { console.error(e); return res.status(500).json({error:'Unable to load savings plans.'}); }
+});
+app.post('/api/v1/savings/plans',authenticated,async(req,res)=>{
+  const parsed=planSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error:'Check the plan name, type, duration and target amount.'});
+  const {name,planType,durationMonths,targetAmount}=parsed.data;
+  if (fixedDurations[planType] && durationMonths!==fixedDurations[planType])
+    return res.status(400).json({error:'The selected plan has a fixed duration.'});
+  const cents=Math.round(targetAmount*100);
+  if (!Number.isSafeInteger(cents) || cents<=0) return res.status(400).json({error:'Invalid target amount.'});
+  const startsOn=new Date().toISOString().slice(0,10);
+  const maturesOn=addMonths(new Date(startsOn+'T00:00:00Z'),durationMonths);
+  try {
+    const result=await db.query(
+      'INSERT INTO savings_plans (id,user_id,name,plan_type,duration_months,target_cents,starts_on,matures_on) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,name,plan_type,duration_months,target_cents,saved_cents,starts_on::text AS starts_on,matures_on::text AS matures_on,created_at',
+      [randomUUID(),req.userId,name,planType,durationMonths,cents,startsOn,maturesOn]);
+    return res.status(201).json({plan:publicPlan(result.rows[0])});
+  } catch(e) { console.error(e); return res.status(500).json({error:'Unable to create savings plan.'}); }
+});
+
 app.listen(Number(process.env.PORT || 4000), '0.0.0.0', () => console.log('Piggy Bank API running'));
