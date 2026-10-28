@@ -240,4 +240,36 @@ app.get('/api/v1/savings/deposits',authenticated,async(req,res)=>{
   }catch(e){console.error(e);return res.status(500).json({error:'Unable to load activity.'});}
 });
 
+
+const withdrawalSchema=z.object({planId:z.string().uuid(),amount:z.number().finite().positive().max(100000000),confirmDemo:z.literal(true)}).strict();
+app.post('/api/v1/savings/withdrawals',authenticated,async(req,res)=>{
+  const parsed=withdrawalSchema.safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Enter a valid amount and confirm this is a simulated withdrawal.'});
+  const cents=Math.round(parsed.data.amount*100);
+  if(!Number.isSafeInteger(cents)||cents<=0||Math.abs(parsed.data.amount*100-cents)>0.000001)return res.status(400).json({error:'Amount must have at most two decimal places.'});
+  const client=await db.connect().catch(()=>null);
+  if(!client)return res.status(500).json({error:'Database unavailable.'});
+  try{
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,saved_cents,matures_on::text AS matures_on FROM savings_plans WHERE id=$1 AND user_id=$2 FOR UPDATE',[parsed.data.planId,req.userId]);
+    if(!found.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Savings plan not found.'});}
+    const plan=found.rows[0];
+    if(cents>Number(plan.saved_cents)){await client.query('ROLLBACK');return res.status(400).json({error:'Withdrawal exceeds your simulated savings balance.'});}
+    const early=new Date().toISOString().slice(0,10)<plan.matures_on;
+    const penalty=early?Math.round(cents*2/100):0;
+    const full=cents===Number(plan.saved_cents);
+    const result=await client.query('INSERT INTO savings_withdrawals(id,user_id,plan_id,amount_cents,penalty_cents,payout_cents,early,full_withdrawal) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,created_at',[randomUUID(),req.userId,plan.id,cents,penalty,cents-penalty,early,full]);
+    await client.query('UPDATE savings_plans SET saved_cents=saved_cents-$1 WHERE id=$2 AND user_id=$3',[cents,plan.id,req.userId]);
+    await client.query('COMMIT');
+    return res.status(201).json({withdrawal:{id:result.rows[0].id,planId:plan.id,amount:cents/100,penalty:penalty/100,payout:(cents-penalty)/100,early,fullWithdrawal:full,status:'demo_completed',createdAt:result.rows[0].created_at},message:'Demo only: no identity check or bank payout occurred.'});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error(e);return res.status(500).json({error:'Unable to record demo withdrawal. Run migration 006.'});}
+  finally{client.release();}
+});
+app.get('/api/v1/savings/withdrawals',authenticated,async(req,res)=>{
+  try{
+    const result=await db.query('SELECT w.id,w.plan_id,w.amount_cents,w.penalty_cents,w.payout_cents,w.early,w.full_withdrawal,w.created_at,p.name AS plan_name FROM savings_withdrawals w JOIN savings_plans p ON p.id=w.plan_id AND p.user_id=w.user_id WHERE w.user_id=$1 ORDER BY w.created_at DESC LIMIT 200',[req.userId]);
+    return res.json({withdrawals:result.rows.map(r=>({id:r.id,planId:r.plan_id,planName:r.plan_name,amount:Number(r.amount_cents)/100,penalty:Number(r.penalty_cents)/100,payout:Number(r.payout_cents)/100,early:r.early,fullWithdrawal:r.full_withdrawal,createdAt:r.created_at}))});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to load demo withdrawals. Run migration 006.'});}
+});
+
 app.listen(Number(process.env.PORT || 4000), '0.0.0.0', () => console.log('Piggy Bank API running'));
