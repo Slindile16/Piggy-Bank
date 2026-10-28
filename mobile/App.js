@@ -28,6 +28,10 @@ export default function App() {
   const [deposits,setDeposits] = useState([]);
   const [depositOpen,setDepositOpen] = useState(false);
   const [detailPlanId,setDetailPlanId] = useState(null);
+  const [editingPlan,setEditingPlan] = useState(false);
+  const [editName,setEditName] = useState('');
+  const [editTarget,setEditTarget] = useState('');
+  const [planChanges,setPlanChanges] = useState([]);
   const [depositPlanId,setDepositPlanId] = useState('');
   const [depositAmount,setDepositAmount] = useState('');
   const loadDeposits = async () => {
@@ -40,7 +44,37 @@ export default function App() {
       setDeposits(data.deposits||[]);
     }catch(e){notify('Activity',e.message);}
   };
-  const openPlanDetails = planId => { setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(planId);setTab('Savings');loadDeposits(); };
+  const loadPlanChanges = async planId => {
+    try{
+      const saved=await sessionStore.get();
+      const response=await fetch(API_URL+'/api/v1/savings/plans/'+planId+'/changes',{headers:{Authorization:'Bearer '+saved}});
+      const data=await response.json();
+      if(response.ok)setPlanChanges(data.changes||[]);
+    }catch(e){console.warn('Unable to load change history',e);}
+  };
+  const openPlanDetails = planId => { setSelectedPlan(null);setDepositOpen(false);setEditingPlan(false);setPlanChanges([]);setDetailPlanId(planId);setTab('Savings');loadDeposits();loadPlanChanges(planId); };
+  const savePlanEdit = async () => {
+    const p=savedPlans.find(item=>item.id===detailPlanId);
+    const target=Number(editTarget);
+    if(!p||!editName.trim()||!/^\d+(\.\d{1,2})?$/.test(editTarget.trim())||target<=0||target>100000000||target<Number(p.savedAmount))
+      return notify('Check your changes','Enter a name and a target at least equal to your saved balance, with up to two decimals.');
+    const summary='Update '+p.name+'?\\n\\nName: '+p.name+' → '+editName.trim()+'\\nTarget: '+money(p.targetAmount)+' → '+money(target)+'\\n\\nYour savings and maturity date will not change.';
+    const proceed=async()=>{
+      setBusy(true);
+      try{
+        const saved=await sessionStore.get();
+        const response=await fetch(API_URL+'/api/v1/savings/plans/'+p.id,{method:'PATCH',headers:{Authorization:'Bearer '+saved,'Content-Type':'application/json'},body:JSON.stringify({name:editName.trim(),targetAmount:target})});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||'Unable to save changes.');
+        await Promise.all([loadPlans(),loadPlanChanges(p.id)]);
+        setEditingPlan(false);
+        notify('Plan updated','Your goal was updated. Your savings and lock date are unchanged.');
+      }catch(e){notify('Unable to update plan',e.message);}
+      finally{setBusy(false);}
+    };
+    if(Platform.OS==='web'){if(window.confirm(summary))await proceed();}
+    else Alert.alert('Confirm plan changes',summary,[{text:'Cancel',style:'cancel'},{text:'Confirm changes',onPress:proceed}]);
+  };
   const beginDeposit = planId => {
     if(savedPlans.length===0) return notify('Create a plan first','You need a savings plan before adding a simulated deposit.');
     setDepositPlanId(planId||savedPlans[0].id);
@@ -131,7 +165,7 @@ export default function App() {
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setDepositOpen(false);setDetailPlanId(null);setSelectedPlan(null);setScreen('login');};
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
   const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity')loadDeposits();};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
@@ -209,7 +243,18 @@ export default function App() {
                   <Text style={s.planDetail}>Locked until: {p.maturesOn}</Text>
                   <Text style={s.planDetail}>Suggested monthly savings: {money(Number(p.targetAmount)/p.durationMonths)}</Text>
                   <Button label="Add savings" onPress={()=>beginDeposit(p.id)}/>
+                  <Button label="Edit savings goal" outline onPress={()=>{setEditName(p.name);setEditTarget(String(p.targetAmount));setEditingPlan(true);}}/>
+                  {editingPlan&&<View style={[s.panel,{marginTop:16}]}>
+                    <Text style={s.sectionTitle}>Edit your goal</Text>
+                    <Text style={s.label}>Goal name</Text><TextInput style={s.input} value={editName} onChangeText={setEditName}/>
+                    <Text style={s.label}>New target amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} keyboardType="decimal-pad" value={editTarget} onChangeText={setEditTarget}/></View>
+                    <Text style={s.emptyText}>Your maturity date, duration and saved balance stay locked. The target cannot be below {money(p.savedAmount)}.</Text>
+                    <Button label={busy?'Saving...':'Review and confirm changes'} disabled={busy} onPress={savePlanEdit}/>
+                    <Button label="Cancel" outline onPress={()=>setEditingPlan(false)}/>
+                  </View>}
                 </View>
+                <Text style={s.sectionTitle}>Goal change history</Text>
+                {planChanges.length===0?<Text style={[s.emptyText,{marginBottom:18}]}>No changes to this goal yet.</Text>:planChanges.map(change=><View key={change.id} style={s.activityRow}><View style={{flex:1}}><Text style={s.planDetail}>{new Date(change.createdAt).toLocaleString('en-ZA')}</Text>{change.oldName!==change.newName&&<Text style={s.planDetail}>Name: {change.oldName} → {change.newName}</Text>}{change.oldTarget!==change.newTarget&&<Text style={s.planDetail}>Target: {money(change.oldTarget)} → {money(change.newTarget)}</Text>}</View></View>)}
                 <Text style={s.sectionTitle}>Deposit history</Text>
                 {planDeposits.length===0?<View style={s.empty}><Text style={s.emptyText}>No deposits recorded for this plan yet.</Text></View>:planDeposits.map(d=><View key={d.id} style={s.activityRow}><View style={{flex:1}}><Text style={s.planTitle}>Simulated deposit</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')}</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
                 <View style={s.notice}><Text style={s.noticeText}>🔒 Cash-out remains disabled. This plan uses simulated funds only; facial verification and withdrawal checks are not implemented yet.</Text></View>
