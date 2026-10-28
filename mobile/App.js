@@ -13,6 +13,7 @@ const sessionStore = {
 const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n'+message) : Alert.alert(title,message);
 const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
 const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
+const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const demoMessage = () => notify('Demo feature','Savings and withdrawals are not yet connected to the backend. No money is being moved.');
 const Button = ({label,onPress,outline=false,disabled=false}) => <TouchableOpacity disabled={disabled} onPress={onPress} style={[s.button,outline&&s.outline,disabled&&{opacity:.55}]}><Text style={[s.buttonText,outline&&{color:C.forest}]}>{label}</Text></TouchableOpacity>;
@@ -189,9 +190,19 @@ export default function App() {
                 </View>
                 <View style={s.plan}>
                   <Text style={s.sectionTitle}>Goal progress</Text>
-                  <Text style={s.planDetail}>{money(p.savedAmount)} saved of {money(p.targetAmount)}</Text>
+                  <View style={s.ringWrap}>
+                    <View style={s.ring}>
+                      {Array.from({length:40},(_,i)=>{
+                        const angle=(i/40)*Math.PI*2-Math.PI/2;
+                        return <View key={i} style={[s.ringDot,{left:100+82*Math.cos(angle)-5,top:100+82*Math.sin(angle)-5,backgroundColor:i<Math.min(40,Math.round(Math.max(0,progress)*40/100))?C.green:C.border}]}/>;
+                      })}
+                      <Text style={s.ringPercent}>{progress}%</Text>
+                      <Text style={s.ringCaption}>OF YOUR GOAL</Text>
+                    </View>
+                  </View>
+                  <Text style={[s.planDetail,{textAlign:'center'}]}>{money(p.savedAmount)} saved of {money(p.targetAmount)}</Text>
                   <View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*Number(p.savedAmount)/Number(p.targetAmount)))+'%'}]}/></View>
-                  <Text style={[s.planDetail,{fontWeight:'800',color:C.green}]}>{progress}% of target</Text>
+                  <View style={s.countdown}><Text style={s.countdownTitle}>MATURITY COUNTDOWN</Text><Text style={s.countdownDays}>{daysUntil(p.maturesOn)===0?'Matured':daysUntil(p.maturesOn)+' days left'}</Text><Text style={s.countdownSub}>Savings unlock date: {p.maturesOn}</Text></View>
                   <View style={s.planLine}/>
                   <Text style={s.planDetail}>Plan: {p.planType==='custom'?'Custom':p.planType.charAt(0).toUpperCase()+p.planType.slice(1)}</Text>
                   <Text style={s.planDetail}>Started: {p.startsOn}</Text>
@@ -266,6 +277,7 @@ const s=StyleSheet.create({
   bottomNav:{flexDirection:'row',justifyContent:'space-around',backgroundColor:C.white,borderRadius:19,borderWidth:1,borderColor:C.border,paddingVertical:12,marginTop:15},navItem:{flex:1,alignItems:'center',paddingVertical:5},navActive:{backgroundColor:'#F0F6F1',borderRadius:12},navIcon:{fontSize:23,color:C.muted},navLabel:{fontSize:10,color:C.muted,marginTop:3},
   planChoice:{borderWidth:1,borderColor:C.border,borderRadius:12,padding:13,marginBottom:10},planChoiceSelected:{borderColor:C.green,backgroundColor:'#EDF6EF'},activityRow:{backgroundColor:C.white,borderRadius:14,padding:17,marginBottom:10,borderWidth:1,borderColor:C.border,flexDirection:'row',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10},activityAmount:{fontSize:16,fontWeight:'900',color:C.green},
   amountRow:{flexDirection:'row',alignItems:'center',backgroundColor:C.ivory,borderWidth:1,borderColor:C.border,borderRadius:12,marginBottom:17},amountPrefix:{fontSize:16,fontWeight:'800',color:C.forest,paddingLeft:14,paddingRight:8},amountInput:{flex:1,paddingVertical:14,paddingRight:14,fontSize:15,color:C.dark},
+  ringWrap:{alignItems:'center',marginVertical:12},ring:{width:200,height:200,alignItems:'center',justifyContent:'center'},ringDot:{position:'absolute',width:10,height:10,borderRadius:5},ringPercent:{fontSize:39,fontWeight:'900',color:C.forest},ringCaption:{fontSize:10,fontWeight:'800',color:C.muted,letterSpacing:1.2},countdown:{backgroundColor:'#EDF6EF',borderRadius:16,padding:18,alignItems:'center',marginTop:20},countdownTitle:{fontSize:10,fontWeight:'800',letterSpacing:1.2,color:C.green},countdownDays:{fontSize:25,fontWeight:'900',color:C.forest,marginTop:7},countdownSub:{fontSize:12,color:C.muted,marginTop:5},
   progressTrack:{height:9,backgroundColor:C.border,borderRadius:6,overflow:'hidden',marginTop:15},progressFill:{height:9,backgroundColor:C.green,borderRadius:6},
   footer:{textAlign:'center',color:'#94A199',fontSize:9,letterSpacing:1,marginTop:24}
 });
