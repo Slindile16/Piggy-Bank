@@ -34,6 +34,8 @@ export default function App() {
   const [tab,setTab] = useState('Home');
   const [user,setUser] = useState(null);
   const [values,setValues] = useState({});
+  const [registrationStep,setRegistrationStep] = useState(1);
+  const [demoPayment,setDemoPayment] = useState({bank:'',accountType:'',cardConfirmed:false});
   const [busy,setBusy] = useState(false);
   const [savedPlans,setSavedPlans] = useState([]);
   const [plansLoading,setPlansLoading] = useState(false);
@@ -164,6 +166,11 @@ export default function App() {
     setScreen('register');
   })(); }, []);
   const submit = async () => {
+    if(screen==='register' && registrationStep===1){
+      if(!values.firstName?.trim()||!values.surname?.trim()||!values.idNumber?.trim()||!values.address?.trim()||!values.gender||!values.email?.trim()||!values.password||values.password.length<12||values.password!==values.confirmPassword)return notify('Complete your details','Fill in all personal information and use matching passwords of at least 12 characters.');
+      setRegistrationStep(2);return;
+    }
+    if(screen==='register' && (!demoPayment.bank||!demoPayment.accountType||!demoPayment.cardConfirmed))return notify('Complete payment setup','Choose a bank and account type, then confirm you understand that only fictional test payment details are supported in this demo.');
     if (screen==='register' && values.password!==values.confirmPassword) return notify('Check password','Passwords do not match.');
     setBusy(true);
     try {
@@ -173,7 +180,7 @@ export default function App() {
       const data=await response.json();
       if (!response.ok) throw new Error(data.error||'Please try again.');
       await sessionStore.set(data.token);
-      setUser(data.user);setValues({});setTab('Home');setScreen('home');loadPlans();
+      setUser(data.user);setValues({});setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setRegistrationStep(1);setTab('Home');setScreen('home');loadPlans();
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
@@ -188,15 +195,25 @@ export default function App() {
         <View style={s.header}><View style={s.brandGroup}><View style={s.brandMark}><Icon name="savings" size={20} color={C.gold}/></View><Text style={s.brand}>Piggy Bank</Text></View><View style={s.brandPill}><Text style={s.brandPillText}>EMERALD LUXE</Text></View></View>
         {!loggedIn ? <View style={s.auth}>
           <Text style={s.eyebrow}>YOUR FUTURE, SECURED</Text>
-          <Text style={s.title}>{screen==='register'?'Start saving beautifully.':'Welcome back.'}</Text>
-          <Text style={s.subtitle}>{screen==='register'?'Create your account to begin your savings journey.':'Sign in to your Piggy Bank account.'}</Text>
-          <View style={s.panel}>{(screen==='register'?fields:[['email','Email address'],['password','Password']]).map(([key,label])=><View key={key}>
+          <Text style={s.title}>{screen==='register'?(registrationStep===1?'Start saving beautifully.':'Set up payment details.'):'Welcome back.'}</Text>
+          <Text style={s.subtitle}>{screen==='register'?(registrationStep===1?'Step 1 of 2 · Personal information':'Step 2 of 2 · Mandatory demo payment setup. No real card or bank account numbers.'):'Sign in to your Piggy Bank account.'}</Text>
+          <View style={s.panel}>{screen==='register'&&registrationStep===2?<View>
+            <View style={s.notice}><Text style={s.noticeText}>DEMONSTRATION ONLY: Do not enter real card numbers, CVVs, expiry dates or bank account numbers. Real payment details will be collected by a certified payment provider when integrated.</Text></View>
+            <Text style={s.label}>Choose your bank</Text>
+            <View style={s.chips}>{['FNB','Capitec','Standard Bank','Absa','Nedbank','Other'].map(bank=><TouchableOpacity key={bank} style={[s.chip,demoPayment.bank===bank&&s.chipSelected]} onPress={()=>setDemoPayment(v=>({...v,bank}))}><Text style={[s.chipText,demoPayment.bank===bank&&{color:C.white}]}>{bank}</Text></TouchableOpacity>)}</View>
+            <Text style={s.label}>Bank account type</Text>
+            <View style={s.chips}>{['Savings','Current','Cheque'].map(accountType=><TouchableOpacity key={accountType} style={[s.chip,demoPayment.accountType===accountType&&s.chipSelected]} onPress={()=>setDemoPayment(v=>({...v,accountType}))}><Text style={[s.chipText,demoPayment.accountType===accountType&&{color:C.white}]}>{accountType}</Text></TouchableOpacity>)}</View>
+            <Text style={s.sectionTitle}>Card payment verification · Preview</Text>
+            <View style={s.plan}><Text style={s.label}>Card number</Text><Text style={s.planDetail}>•••• •••• •••• 4242 · fictional preview</Text><View style={s.planLine}/><Text style={s.label}>Expiry date</Text><Text style={s.planDetail}>MM/YY · collected securely by payment provider</Text><View style={s.planLine}/><Text style={s.label}>CVV</Text><Text style={s.planDetail}>••• · entered only into provider's secure checkout</Text></View>
+            <TouchableOpacity style={[s.planChoice,demoPayment.cardConfirmed&&s.planChoiceSelected]} onPress={()=>setDemoPayment(v=>({...v,cardConfirmed:!v.cardConfirmed}))}><Text style={s.planDetail}>{demoPayment.cardConfirmed?'✓ ':'○ '}I understand this is a demo and will provide real card details only through a secure payment provider.</Text></TouchableOpacity>
+            <Button label="← Back to personal information" outline onPress={()=>setRegistrationStep(1)}/>
+          </View>:(screen==='register'?fields:[['email','Email address'],['password','Password']]).map(([key,label])=><View key={key}>
             <Text style={s.label}>{label}</Text>
             {key==='gender'?<View style={s.chips}>{['Female','Male','Non-binary','Other'].map(g=><TouchableOpacity key={g} onPress={()=>setValues(v=>({...v,gender:g}))} style={[s.chip,values.gender===g&&s.chipSelected]}><Text style={[s.chipText,values.gender===g&&{color:C.white}]}>{g}</Text></TouchableOpacity>)}</View>:
             <TextInput style={s.input} placeholder={label} placeholderTextColor="#96A39A" value={values[key]||''} onChangeText={v=>setValues(prev=>({...prev,[key]:v}))} autoCapitalize={key==='email'?'none':'sentences'} autoCorrect={false} secureTextEntry={key.toLowerCase().includes('password')} keyboardType={key==='email'?'email-address':key==='idNumber'?'number-pad':'default'}/>}
           </View>)}
-          <Button label={busy?'Please wait...':screen==='register'?'Create account':'Sign in'} disabled={busy} onPress={submit}/>
-          <TouchableOpacity onPress={()=>{setValues({});setScreen(screen==='register'?'login':'register');}}><Text style={s.link}>{screen==='register'?'Already have an account? Sign in':'New to Piggy Bank? Create an account'}</Text></TouchableOpacity>
+          <Button label={busy?'Please wait...':screen==='register'?(registrationStep===1?'Continue to payment setup':'Create demo account'):'Sign in'} disabled={busy} onPress={submit}/>
+          <TouchableOpacity onPress={()=>{setValues({});setRegistrationStep(1);setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setScreen(screen==='register'?'login':'register');}}><Text style={s.link}>{screen==='register'?'Already have an account? Sign in':'New to Piggy Bank? Create an account'}</Text></TouchableOpacity>
           </View>
         </View> : <>
           {tab==='Home'&&<>
