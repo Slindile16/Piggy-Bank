@@ -141,4 +141,39 @@ app.post('/api/v1/savings/plans',authenticated,async(req,res)=>{
   } catch(e) { console.error(e); return res.status(500).json({error:'Unable to create savings plan.'}); }
 });
 
+const depositSchema=z.object({
+  planId:z.string().uuid(),
+  amount:z.number().finite().positive().max(100000000)
+}).strict();
+app.post('/api/v1/savings/deposits',authenticated,async(req,res)=>{
+  const parsed=depositSchema.safeParse(req.body);
+  if(!parsed.success) return res.status(400).json({error:'Enter a valid savings plan and positive deposit amount.'});
+  const cents=Math.round(parsed.data.amount*100);
+  if(!Number.isSafeInteger(cents)||cents<1||Math.abs(parsed.data.amount*100-cents)>0.000001)
+    return res.status(400).json({error:'Deposit amount must have at most two decimal places.'});
+  const client=await db.connect().catch(()=>null);
+  if(!client) return res.status(500).json({error:'Database unavailable.'});
+  try {
+    await client.query('BEGIN');
+    const owned=await client.query('SELECT id FROM savings_plans WHERE id=$1 AND user_id=$2 FOR UPDATE',[parsed.data.planId,req.userId]);
+    if(!owned.rows.length) { await client.query('ROLLBACK');return res.status(404).json({error:'Savings plan not found.'}); }
+    const depositId=randomUUID();
+    const deposited=await client.query(
+      'INSERT INTO savings_deposits(id,user_id,plan_id,amount_cents) VALUES($1,$2,$3,$4) RETURNING id,amount_cents,created_at',
+      [depositId,req.userId,parsed.data.planId,cents]);
+    await client.query('UPDATE savings_plans SET saved_cents=saved_cents+$1 WHERE id=$2 AND user_id=$3',[cents,parsed.data.planId,req.userId]);
+    await client.query('COMMIT');
+    return res.status(201).json({deposit:{id:depositId,planId:parsed.data.planId,amount:cents/100,createdAt:deposited.rows[0].created_at}});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error(e);return res.status(500).json({error:'Unable to record simulated deposit.'});}
+  finally{client.release();}
+});
+app.get('/api/v1/savings/deposits',authenticated,async(req,res)=>{
+  try{
+    const result=await db.query(
+      'SELECT d.id,d.plan_id,d.amount_cents,d.created_at,p.name AS plan_name FROM savings_deposits d JOIN savings_plans p ON p.id=d.plan_id AND p.user_id=d.user_id WHERE d.user_id=$1 ORDER BY d.created_at DESC LIMIT 200',
+      [req.userId]);
+    return res.json({deposits:result.rows.map(r=>({id:r.id,planId:r.plan_id,planName:r.plan_name,amount:Number(r.amount_cents)/100,createdAt:r.created_at}))});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to load activity.'});}
+});
+
 app.listen(Number(process.env.PORT || 4000), '0.0.0.0', () => console.log('Piggy Bank API running'));
