@@ -12,7 +12,8 @@ const sessionStore = {
 };
 const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n'+message) : Alert.alert(title,message);
 const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
-const plans = [{months:6,title:'The Starter',detail:'Short-term focus'},{months:12,title:'The Builder',detail:'Build lasting habits'},{months:18,title:'The Visionary',detail:'Your long-term goal'}];
+const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
+const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const demoMessage = () => notify('Demo feature','Savings and withdrawals are not yet connected to the backend. No money is being moved.');
 const Button = ({label,onPress,outline=false,disabled=false}) => <TouchableOpacity disabled={disabled} onPress={onPress} style={[s.button,outline&&s.outline,disabled&&{opacity:.55}]}><Text style={[s.buttonText,outline&&{color:C.forest}]}>{label}</Text></TouchableOpacity>;
 export default function App() {
@@ -21,12 +22,52 @@ export default function App() {
   const [user,setUser] = useState(null);
   const [values,setValues] = useState({});
   const [busy,setBusy] = useState(false);
+  const [savedPlans,setSavedPlans] = useState([]);
+  const [plansLoading,setPlansLoading] = useState(false);
+  const [selectedPlan,setSelectedPlan] = useState(null);
+  const [planForm,setPlanForm] = useState({name:'',targetAmount:'',durationMonths:'6'});
+  const loadPlans = async () => {
+    setPlansLoading(true);
+    try {
+      const saved=await sessionStore.get();
+      if (!saved) return;
+      const response=await fetch(API_URL+'/api/v1/savings/plans',{headers:{Authorization:'Bearer '+saved}});
+      const data=await response.json();
+      if (!response.ok) throw new Error(data.error||'Unable to load plans.');
+      setSavedPlans(data.plans||[]);
+    } catch(e) { notify('Savings plans',e.message); }
+    finally { setPlansLoading(false); }
+  };
+  const beginPlan = plan => {
+    setSelectedPlan(plan);
+    setPlanForm({name:'',targetAmount:'',durationMonths:String(plan.months||6)});
+    setTab('Savings');
+  };
+  const createPlan = async () => {
+    const duration=Number(planForm.durationMonths);
+    const amount=Number(planForm.targetAmount);
+    if (!planForm.name.trim() || !Number.isInteger(duration) || duration<1 || duration>60 || !Number.isFinite(amount) || amount<=0 || amount>100000000 || !/^\\d+(\\.\\d{1,2})?$/.test(planForm.targetAmount.trim())) {
+      return notify('Check your plan','Enter a name, a valid duration (1–60 months), and a target amount greater than R0 with at most two decimal places.');
+    }
+    setBusy(true);
+    try {
+      const saved=await sessionStore.get();
+      const response=await fetch(API_URL+'/api/v1/savings/plans',{method:'POST',headers:{Authorization:'Bearer '+saved,'Content-Type':'application/json'},body:JSON.stringify({name:planForm.name.trim(),planType:selectedPlan.type,durationMonths:duration,targetAmount:amount})});
+      const data=await response.json();
+      if (!response.ok) throw new Error(data.error||'Unable to create plan.');
+      setSelectedPlan(null);
+      await loadPlans();
+      setTab('Home');
+      notify('Plan created','Your locked savings plan was saved successfully. No money has been deposited.');
+    } catch(e) { notify('Unable to create plan',e.message); }
+    finally { setBusy(false); }
+  };
   useEffect(() => { (async () => {
     try {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();return; }
         await sessionStore.remove();
       }
     } catch {}
@@ -42,12 +83,12 @@ export default function App() {
       const data=await response.json();
       if (!response.ok) throw new Error(data.error||'Please try again.');
       await sessionStore.set(data.token);
-      setUser(data.user);setValues({});setTab('Home');setScreen('home');
+      setUser(data.user);setValues({});setTab('Home');setScreen('home');loadPlans();
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setScreen('login');};
-  const nav=target=>setTab(target);
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setSelectedPlan(null);setScreen('login');};
+  const nav=target=>{setSelectedPlan(null);setTab(target);if(target==='Savings'||target==='Home')loadPlans();};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':undefined}>
@@ -71,16 +112,29 @@ export default function App() {
           {tab==='Home'&&<>
             <Text style={s.eyebrow}>GOOD TO HAVE YOU HERE</Text><Text style={s.title}>Hello, {user?.firstName||'Saver'} 👋</Text>
             <Text style={s.subtitle}>Your future is worth saving for.</Text>
-            <View style={s.balance}><Text style={s.balanceLabel}>TOTAL SAVINGS  ·  DEMO</Text><Text style={s.balanceAmount}>R0.00</Text><View style={s.goldLine}/><Text style={s.balanceFoot}>0 active plans    •    No deposits yet</Text></View>
+            <View style={s.balance}><Text style={s.balanceLabel}>TOTAL SAVINGS  ·  DEMO</Text><Text style={s.balanceAmount}>{money(savedPlans.reduce((sum,p)=>sum+Number(p.savedAmount||0),0))}</Text><View style={s.goldLine}/><Text style={s.balanceFoot}>{savedPlans.length} active plans    •    No deposits yet</Text></View>
             <Text style={s.sectionTitle}>Quick actions</Text>
-            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>nav('Savings')}><Text style={s.actionIcon}>＋</Text><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={demoMessage}><Text style={s.actionIcon}>↗</Text><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
+            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>beginPlan(plans[0])}><Text style={s.actionIcon}>＋</Text><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={demoMessage}><Text style={s.actionIcon}>↗</Text><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
             <View style={s.sectionRow}><Text style={s.sectionTitle}>My savings plans</Text><TouchableOpacity onPress={()=>nav('Savings')}><Text style={s.greenLink}>Explore →</Text></TouchableOpacity></View>
-            <View style={s.empty}><Text style={s.emptyIcon}>🐷</Text><Text style={s.emptyTitle}>Your journey starts here</Text><Text style={s.emptyText}>Choose a savings plan to start building your future. Plans are previews for now.</Text><Button label="Explore savings plans" onPress={()=>nav('Savings')}/></View>
+            {savedPlans.length===0?<View style={s.empty}><Text style={s.emptyIcon}>🐷</Text><Text style={s.emptyTitle}>Your journey starts here</Text><Text style={s.emptyText}>Choose a savings plan to start building your future.</Text><Button label="Explore savings plans" onPress={()=>nav('Savings')}/></View>:savedPlans.map(p=><View key={p.id} style={s.plan}><Text style={s.planTitle}>{p.name}</Text><Text style={s.planDetail}>{p.durationMonths} months · Locked until {p.maturesOn}</Text><Text style={s.planDetail}>{money(p.savedAmount)} of {money(p.targetAmount)} saved</Text><View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*p.savedAmount/p.targetAmount))+'%'}]}/></View><Text style={s.planDetail}>{Math.round(100*p.savedAmount/p.targetAmount)}% complete · Suggested {money(p.targetAmount/p.durationMonths)}/month</Text></View>)}
           </>}
           {tab==='Savings'&&<>
-            <Text style={s.eyebrow}>SAVE WITH PURPOSE</Text><Text style={s.title}>Savings plans</Text><Text style={s.subtitle}>Choose a term that suits your goals. These are previews — no funds are collected.</Text>
-            {plans.map(p=><View key={p.months} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months} MONTHS</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings term: {p.months} months</Text><Button label="Choose plan · Coming soon" onPress={demoMessage} outline/></View>)}
-            <View style={s.notice}><Text style={s.noticeText}>🔒 Locked-plan rules, deposits, maturity dates and withdrawals will be enforced by the backend in a future phase.</Text></View>
+            <Text style={s.eyebrow}>SAVE WITH PURPOSE</Text><Text style={s.title}>Savings plans</Text><Text style={s.subtitle}>Create as many locked savings plans as you need. All amounts are simulated.</Text>
+            {selectedPlan ? <View style={s.panel}>
+              <TouchableOpacity onPress={()=>setSelectedPlan(null)}><Text style={s.greenLink}>← Back to plans</Text></TouchableOpacity>
+              <Text style={[s.sectionTitle,{marginTop:20}]}>{selectedPlan.title}</Text>
+              <Text style={s.planDetail}>Your savings will be locked for {selectedPlan.type==='custom'?'your chosen duration':selectedPlan.months+' months'}.</Text>
+              <Text style={[s.label,{marginTop:20}]}>Savings goal name</Text><TextInput style={s.input} placeholder="e.g. My First Car" value={planForm.name} onChangeText={name=>setPlanForm(v=>({...v,name}))}/>
+              <Text style={s.label}>Target amount (R)</Text><TextInput style={s.input} placeholder="e.g. 50000" keyboardType="decimal-pad" value={planForm.targetAmount} onChangeText={targetAmount=>setPlanForm(v=>({...v,targetAmount}))}/>
+              {selectedPlan.type==='custom'&&<><Text style={s.label}>Duration in months (1–60)</Text><TextInput style={s.input} keyboardType="number-pad" value={planForm.durationMonths} onChangeText={durationMonths=>setPlanForm(v=>({...v,durationMonths}))}/></>}
+              <View style={s.notice}><Text style={s.noticeText}>🔒 Locked for {planForm.durationMonths||'?'} months. Suggested monthly savings: {Number(planForm.targetAmount)>0&&Number(planForm.durationMonths)>0?money(Number(planForm.targetAmount)/Number(planForm.durationMonths)):'—'}. Cash-out is not available in this demo.</Text></View>
+              <Button label={busy?'Creating plan...':'Create locked savings plan'} disabled={busy} onPress={createPlan}/>
+            </View> : <>
+              {plans.map(p=><View key={p.type} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months?p.months+' MONTHS':'1–60 MONTHS'}</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings plan</Text><Button label="Choose plan" onPress={()=>beginPlan(p)} outline/></View>)}
+              <Text style={s.sectionTitle}>Your saved plans ({savedPlans.length})</Text>
+              {plansLoading&&<ActivityIndicator color={C.green}/>}
+              {savedPlans.map(p=><View key={p.id} style={s.plan}><Text style={s.planTitle}>{p.name}</Text><Text style={s.planDetail}>{p.durationMonths} months · Matures {p.maturesOn}</Text><Text style={s.planDetail}>Target: {money(p.targetAmount)} · Saved: {money(p.savedAmount)}</Text></View>)}
+            </>}
           </>}
           {tab==='Activity'&&<>
             <Text style={s.eyebrow}>YOUR MONEY STORY</Text><Text style={s.title}>Activity</Text><Text style={s.subtitle}>Track your savings journey in one place.</Text>
@@ -125,5 +179,6 @@ const s=StyleSheet.create({
   security:{backgroundColor:C.white,borderWidth:1,borderColor:C.border,borderRadius:20,padding:22},securityBadge:{backgroundColor:'#F6EBD7',alignSelf:'flex-start',padding:7,borderRadius:8,marginBottom:13},securityBadgeText:{fontSize:10,fontWeight:'800',color:'#8A6429'},securityTitle:{fontSize:18,fontWeight:'900',color:C.forest,marginBottom:8},
   faceCircle:{height:178,width:178,borderRadius:89,borderWidth:3,borderColor:C.gold,backgroundColor:C.ivory,alignSelf:'center',alignItems:'center',justifyContent:'center',marginVertical:19},faceIcon:{fontSize:55,color:C.green},faceText:{fontSize:11,fontWeight:'700',color:C.forest},
   bottomNav:{flexDirection:'row',justifyContent:'space-around',backgroundColor:C.white,borderRadius:19,borderWidth:1,borderColor:C.border,paddingVertical:12,marginTop:15},navItem:{flex:1,alignItems:'center',paddingVertical:5},navActive:{backgroundColor:'#F0F6F1',borderRadius:12},navIcon:{fontSize:23,color:C.muted},navLabel:{fontSize:10,color:C.muted,marginTop:3},
+  progressTrack:{height:9,backgroundColor:C.border,borderRadius:6,overflow:'hidden',marginTop:15},progressFill:{height:9,backgroundColor:C.green,borderRadius:6},
   footer:{textAlign:'center',color:'#94A199',fontSize:9,letterSpacing:1,marginTop:24}
 });
