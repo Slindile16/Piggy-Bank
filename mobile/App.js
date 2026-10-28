@@ -46,7 +46,7 @@ export default function App() {
   const createPlan = async () => {
     const duration=Number(planForm.durationMonths);
     const amount=Number(planForm.targetAmount);
-    if (!planForm.name.trim() || !Number.isInteger(duration) || duration<1 || duration>60 || !Number.isFinite(amount) || amount<=0 || amount>100000000 || !/^\\d+(\\.\\d{1,2})?$/.test(planForm.targetAmount.trim())) {
+    if (!planForm.name.trim() || !Number.isInteger(duration) || duration<1 || duration>60 || !Number.isFinite(amount) || amount<=0 || amount>100000000 || !/^\d+(\.\d{1,2})?$/.test(planForm.targetAmount.trim())) {
       return notify('Check your plan','Enter a name, a valid duration (1–60 months), and a target amount greater than R0 with at most two decimal places.');
     }
     setBusy(true);
