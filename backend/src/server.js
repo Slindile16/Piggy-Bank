@@ -272,4 +272,26 @@ app.get('/api/v1/savings/withdrawals',authenticated,async(req,res)=>{
   }catch(e){console.error(e);return res.status(500).json({error:'Unable to load demo withdrawals. Run migration 006.'});}
 });
 
+
+const demoBankingSchema=z.object({
+  bank:z.enum(['FNB','Capitec','Standard Bank','Absa','Nedbank','Other']),
+  accountType:z.enum(['Savings','Current','Cheque'])
+}).strict();
+app.get('/api/v1/auth/demo-banking',authenticated,async(req,res)=>{
+  try{
+    const r=await db.query('SELECT bank_name,account_type,updated_at FROM demo_banking_preferences WHERE user_id=$1',[req.userId]);
+    return res.json({banking:r.rows.length?{bank:r.rows[0].bank_name,accountType:r.rows[0].account_type,updatedAt:r.rows[0].updated_at}:null});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to load demo banking preferences. Run migration 007.'});}
+});
+app.put('/api/v1/auth/demo-banking',authenticated,async(req,res)=>{
+  const parsed=demoBankingSchema.safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Choose a valid bank and account type. Never submit real card or account details.'});
+  try{
+    const r=await db.query(`INSERT INTO demo_banking_preferences(user_id,bank_name,account_type) VALUES($1,$2,$3)
+    ON CONFLICT(user_id) DO UPDATE SET bank_name=EXCLUDED.bank_name,account_type=EXCLUDED.account_type,updated_at=NOW()
+    RETURNING bank_name,account_type,updated_at`,[req.userId,parsed.data.bank,parsed.data.accountType]);
+    return res.json({banking:{bank:r.rows[0].bank_name,accountType:r.rows[0].account_type,updatedAt:r.rows[0].updated_at},verified:false,demo:true});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to update demo banking preferences. Run migration 007.'});}
+});
+
 app.listen(Number(process.env.PORT || 4000), '0.0.0.0', () => console.log('Piggy Bank API running'));
