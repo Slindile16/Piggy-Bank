@@ -12,6 +12,8 @@ const sessionStore = {
 };
 const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n'+message) : Alert.alert(title,message);
 const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['mobileNumber','Mobile number (e.g. 0821234567)'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
+const TERMS_VERSION='2026-10-28-demo-v1';
+const TERMS=[["Demo service","Piggy Bank is a demonstration only. Balances and deposits are simulated. No real money is held, transferred or withdrawn."],["Locked savings","In a future live service, savings remain locked until the plan maturity date. Reaching your goal early does not permit early withdrawal. Current demo withdrawals are disabled."],["Identity checks","A future withdrawal requires a matured plan and successful identity, liveness and payout-account verification. If the verification does not match, the withdrawal will be blocked pending review. These checks are not yet implemented."],["Contributions and goals","Contributions are flexible and simulated. Changing a goal name or target does not change its maturity date or erase saved amounts."],["Keep your account safe","Protect your password and device. Never share OTPs, PINs or CVVs. Report suspicious activity. Never enter real bank or card details into this demo."],["Payments and privacy","A future real-money version will need a secure payment provider, bank-account verification, privacy disclosures and appropriate POPIA safeguards. CVVs must never be stored after authorisation."],["Important limitations","These draft demo terms are not a legally reviewed financial services agreement. Real-money operations require regulatory and legal review, fees and dispute policies, and suitable provider arrangements."]];
 const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
 const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -37,6 +39,8 @@ export default function App() {
   const [profileForm,setProfileForm] = useState({});
   const [values,setValues] = useState({});
   const [registrationStep,setRegistrationStep] = useState(1);
+  const [termsOpen,setTermsOpen] = useState(false);
+  const [termsAccepted,setTermsAccepted] = useState(false);
   const [demoPayment,setDemoPayment] = useState({bank:'',accountType:'',cardConfirmed:false});
   const [busy,setBusy] = useState(false);
   const [savedPlans,setSavedPlans] = useState([]);
@@ -172,18 +176,19 @@ export default function App() {
       if(!values.firstName?.trim()||!values.surname?.trim()||!values.idNumber?.trim()||!values.address?.trim()||!values.mobileNumber?.trim()||!values.gender||!values.email?.trim()||!values.password||values.password.length<12||values.password!==values.confirmPassword)return notify('Complete your details','Fill in all personal information and use matching passwords of at least 12 characters.');
       setRegistrationStep(2);return;
     }
+    if(screen==='register' && !termsAccepted)return notify('Terms required','Read and accept the Terms & Conditions to create your account.');
     if(screen==='register' && (!demoPayment.bank||!demoPayment.accountType||!demoPayment.cardConfirmed))return notify('Complete payment setup','Choose a bank and account type, then confirm you understand that only fictional test payment details are supported in this demo.');
     if (screen==='register' && !/^(?:\\+27|0)[6-8]\\d{8}$/.test(values.mobileNumber||''))return notify('Mobile number','Enter a valid South African mobile number, e.g. 0821234567.');
     if (screen==='register' && values.password!==values.confirmPassword) return notify('Check password','Passwords do not match.');
     setBusy(true);
     try {
       const endpoint=screen==='register'?'register':'login';
-      const body=screen==='register'?(({confirmPassword,...data})=>data)(values):{email:values.email,password:values.password};
+      const body=screen==='register'?({...(({confirmPassword,...data})=>data)(values),termsVersion:TERMS_VERSION,termsAccepted:true}:{email:values.email,password:values.password};
       const response=await fetch(API_URL+'/api/v1/auth/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const data=await response.json();
       if (!response.ok) throw new Error(data.error||'Please try again.');
       await sessionStore.set(data.token);
-      setUser(data.user);setValues({});setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setRegistrationStep(1);setTab('Home');setScreen('home');loadPlans();
+      setUser(data.user);setValues({});setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setRegistrationStep(1);setTermsAccepted(false);setTermsOpen(false);setTab('Home');setScreen('home');loadPlans();
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
@@ -228,8 +233,9 @@ export default function App() {
             {key==='gender'?<View style={s.chips}>{['Female','Male','Non-binary','Other'].map(g=><TouchableOpacity key={g} onPress={()=>setValues(v=>({...v,gender:g}))} style={[s.chip,values.gender===g&&s.chipSelected]}><Text style={[s.chipText,values.gender===g&&{color:C.white}]}>{g}</Text></TouchableOpacity>)}</View>:
             <TextInput style={s.input} placeholder={label} placeholderTextColor="#96A39A" value={values[key]||''} onChangeText={v=>setValues(prev=>({...prev,[key]:v}))} autoCapitalize={key==='email'?'none':'sentences'} autoCorrect={false} secureTextEntry={key.toLowerCase().includes('password')} keyboardType={key==='email'?'email-address':key==='idNumber'||key==='mobileNumber'?'phone-pad':'default'}/>}
           </View>)}
+          {screen==='register'&&registrationStep===2&&<View style={{marginTop:15}}><Text style={s.emptyText}>Before creating your account, please go through our Terms &amp; Conditions.</Text><TouchableOpacity onPress={()=>setTermsOpen(v=>!v)} accessibilityRole="button"><Text style={s.greenLink}>{termsOpen?'Hide Terms & Conditions':'Read Terms & Conditions →'}</Text></TouchableOpacity>{termsOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Terms &amp; Conditions</Text>{TERMS.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}<TouchableOpacity style={[s.planChoice,termsAccepted&&s.planChoiceSelected,{marginTop:12}]} accessibilityRole="checkbox" accessibilityState={{checked:termsAccepted}} onPress={()=>setTermsAccepted(v=>!v)}><Text style={s.planDetail}>{termsAccepted?'☑':'☐'} I have read and agree to the Terms & Conditions.</Text></TouchableOpacity></View>}
           <Button label={busy?'Please wait...':screen==='register'?(registrationStep===1?'Continue to payment setup':'Create demo account'):'Sign in'} disabled={busy} onPress={submit}/>
-          <TouchableOpacity onPress={()=>{setValues({});setRegistrationStep(1);setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setScreen(screen==='register'?'login':'register');}}><Text style={s.link}>{screen==='register'?'Already have an account? Sign in':'New to Piggy Bank? Create an account'}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={()=>{setValues({});setRegistrationStep(1);setTermsAccepted(false);setTermsOpen(false);setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setScreen(screen==='register'?'login':'register');}}><Text style={s.link}>{screen==='register'?'Already have an account? Sign in':'New to Piggy Bank? Create an account'}</Text></TouchableOpacity>
           </View>
         </View> : <>
           {tab==='Home'&&<>
@@ -336,6 +342,7 @@ export default function App() {
               <Button label={busy?'Saving...':'Save profile changes'} disabled={busy} onPress={saveProfile}/>
               <Button label="Cancel" outline onPress={()=>setProfileOpen(false)}/>
             </View>}
+            <TouchableOpacity style={s.plan} onPress={()=>setTermsOpen(v=>!v)} accessibilityRole="button"><Text style={s.planTitle}>Terms &amp; Conditions</Text><Text style={s.planDetail}>Review savings, withdrawals and account safety →</Text></TouchableOpacity>{termsOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Terms &amp; Conditions</Text>{TERMS.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}
             <Text style={s.sectionTitle}>Identity & security</Text>
             <View style={s.security}><View style={s.securityBadge}><Text style={s.securityBadgeText}>NOT ENROLLED</Text></View><Text style={s.securityTitle}>Face verification</Text><Text style={s.emptyText}>Required before your first cash-out. Secure biometric enrollment and matching are not available in this demo.</Text>
             <View style={s.faceCircle}><Icon name="profile" size={64} color={C.green}/><Text style={s.faceText}>Face scan preview</Text></View>
