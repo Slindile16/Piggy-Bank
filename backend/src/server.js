@@ -21,6 +21,7 @@ const registration = z.object({
   surname: z.string().trim().min(1).max(100),
   idNumber: z.string().regex(/^\d{13}$/),
   address: z.string().trim().min(5).max(500),
+  mobileNumber: z.string().trim().regex(/^(?:\+27|0)[6-8]\d{8}$/),
   gender: z.enum(['Female','Male','Non-binary','Prefer not to say','Other']),
   email: z.string().trim().email().max(254).transform(v => v.toLowerCase()),
   password: z.string().min(12).max(128)
@@ -43,7 +44,7 @@ function saIdBirthDate(id) {
   if (sum % 10 !== 0) return null;
   return `${year}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
 }
-function publicUser(row) { return { id: row.id, firstName: row.first_name, surname: row.surname, email: row.email, gender: row.gender }; }
+function publicUser(row) { return { id: row.id, firstName: row.first_name, surname: row.surname, email: row.email, gender: row.gender, mobileNumber: row.mobile_number || '', address: row.address || '' }; }
 function token(user) { return jwt.sign({ sub: user.id }, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' }); }
 app.post('/api/v1/auth/register', async (req,res) => {
   const parsed = registration.safeParse(req.body);
@@ -53,9 +54,9 @@ app.post('/api/v1/auth/register', async (req,res) => {
   if (!birthDate) return res.status(400).json({ error: 'Invalid South African ID number.' });
   try {
     const hash = await bcrypt.hash(data.password, 12);
-    const result = await db.query(`INSERT INTO users (id,first_name,surname,id_number,address,birth_date,gender,email,password_hash)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,first_name,surname,email,gender`,
-      [randomUUID(),data.firstName,data.surname,data.idNumber,data.address,birthDate,data.gender,data.email,hash]);
+    const result = await db.query(`INSERT INTO users (id,first_name,surname,id_number,address,mobile_number,birth_date,gender,email,password_hash)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,first_name,surname,email,gender,mobile_number,address`,
+      [randomUUID(),data.firstName,data.surname,data.idNumber,data.address,data.mobileNumber,birthDate,data.gender,data.email,hash]);
     const user = publicUser(result.rows[0]);
     return res.status(201).json({ user, token: token(user) });
   } catch(e) {
@@ -79,10 +80,33 @@ app.get('/api/v1/auth/me', async (req,res) => {
   if (!bearer) return res.sendStatus(401);
   try {
     const payload = jwt.verify(bearer[1],process.env.JWT_SECRET,{algorithms:['HS256']});
-    const result = await db.query('SELECT id,first_name,surname,email,gender FROM users WHERE id=$1',[payload.sub]);
+    const result = await db.query('SELECT id,first_name,surname,email,gender,mobile_number,address FROM users WHERE id=$1',[payload.sub]);
     if (!result.rows[0]) return res.sendStatus(401);
     return res.json({user:publicUser(result.rows[0])});
   } catch { return res.sendStatus(401); }
+});
+
+const profileUpdateSchema=z.object({
+  firstName:z.string().trim().min(1).max(100),
+  surname:z.string().trim().min(1).max(100),
+  address:z.string().trim().min(5).max(500),
+  mobileNumber:z.string().trim().regex(/^(?:\+27|0)[6-8]\d{8}$/),
+  gender:z.enum(['Female','Male','Non-binary','Prefer not to say','Other'])
+}).strict();
+app.patch('/api/v1/auth/profile',async(req,res)=>{
+  const bearer=req.headers.authorization?.match(/^Bearer (.+)$/);
+  if(!bearer)return res.sendStatus(401);
+  let userId;
+  try{userId=jwt.verify(bearer[1],process.env.JWT_SECRET,{algorithms:['HS256']}).sub;}
+  catch{return res.sendStatus(401);}
+  const parsed=profileUpdateSchema.safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Check your name, address, gender and South African mobile number.'});
+  const d=parsed.data;
+  try{
+    const result=await db.query('UPDATE users SET first_name=$1,surname=$2,address=$3,mobile_number=$4,gender=$5 WHERE id=$6 RETURNING id,first_name,surname,email,gender,mobile_number,address',[d.firstName,d.surname,d.address,d.mobileNumber,d.gender,userId]);
+    if(!result.rows.length)return res.sendStatus(404);
+    return res.json({user:publicUser(result.rows[0])});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to update profile. Run migration 005.'});}
 });
 
 const planSchema = z.object({
