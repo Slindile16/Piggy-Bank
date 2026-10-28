@@ -46,6 +46,9 @@ export default function App() {
   const [user,setUser] = useState(null);
   const [profileOpen,setProfileOpen] = useState(false);
   const [profileForm,setProfileForm] = useState({});
+  const [bankingOpen,setBankingOpen] = useState(false);
+  const [bankingForm,setBankingForm] = useState({bank:'',accountType:''});
+  const [savedBanking,setSavedBanking] = useState(null);
   const [values,setValues] = useState({});
   const [registrationStep,setRegistrationStep] = useState(1);
   const [termsOpen,setTermsOpen] = useState(false);
@@ -204,7 +207,7 @@ export default function App() {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadWithdrawals();loadDeposits();loadWithdrawals();return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadWithdrawals();loadBanking();loadDeposits();loadWithdrawals();return; }
         await sessionStore.remove();
       }
     } catch {}
@@ -231,6 +234,18 @@ export default function App() {
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
+
+  const loadBanking=async()=>{
+    try{const token=await sessionStore.get();if(!token)return;const r=await fetch(API_URL+'/api/v1/auth/demo-banking',{headers:{Authorization:'Bearer '+token}});if(r.ok)setSavedBanking((await r.json()).banking);}catch(e){console.warn('Banking preferences',e);}
+  };
+  const openBanking=()=>{setBankingForm({bank:savedBanking?.bank||'',accountType:savedBanking?.accountType||''});setBankingOpen(v=>!v);};
+  const saveBanking=async()=>{
+    if(!bankingForm.bank||!bankingForm.accountType)return notify('Complete banking preferences','Select a bank and account type.');
+    setBusy(true);
+    try{const token=await sessionStore.get();const r=await fetch(API_URL+'/api/v1/auth/demo-banking',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(bankingForm)});const data=await r.json();if(!r.ok)throw new Error(data.error||'Unable to save preferences.');setSavedBanking(data.banking);setBankingOpen(false);notify('Demo banking updated','Your fictional bank selection was saved. No real banking or card details were stored or verified.');}
+    catch(e){notify('Banking preferences',e.message);}finally{setBusy(false);}
+  };
+
   const openProfile=()=>{setProfileForm({firstName:user?.firstName||'',surname:user?.surname||'',address:user?.address||'',mobileNumber:user?.mobileNumber||'',gender:user?.gender||'Female'});setProfileOpen(true);};
   const saveProfile=async()=>{
     if(!profileForm.firstName?.trim()||!profileForm.surname?.trim()||!profileForm.address?.trim()||!profileForm.mobileNumber?.trim())return notify('Complete profile','Please complete all editable fields.');
@@ -244,7 +259,7 @@ export default function App() {
     }catch(e){notify('Unable to update profile',e.message);}
     finally{setBusy(false);}
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setWithdrawals([]);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setWithdrawals([]);setSavedBanking(null);setBankingOpen(false);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
   const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setProfileOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity'){loadDeposits();loadWithdrawals();}};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
@@ -384,6 +399,8 @@ export default function App() {
               <Button label={busy?'Saving...':'Save profile changes'} disabled={busy} onPress={saveProfile}/>
               <Button label="Cancel" outline onPress={()=>setProfileOpen(false)}/>
             </View>}
+            <TouchableOpacity style={s.plan} onPress={openBanking} accessibilityRole="button"><Text style={s.planTitle}>Banking &amp; Card Details</Text><Text style={s.planDetail}>{savedBanking?savedBanking.bank+' · '+savedBanking.accountType+' (demo only)':'No demo bank selected'} · Update →</Text></TouchableOpacity>
+            {bankingOpen&&<View style={[s.panel,{marginBottom:20}]}><Text style={s.sectionTitle}>Update banking preferences</Text><Text style={s.emptyText}>Demo only. Choose a fictional bank preference and account type. Do not enter real account numbers, card numbers, expiry dates, PINs or CVVs.</Text><Text style={s.label}>Bank</Text><View style={s.chips}>{['FNB','Capitec','Standard Bank','Absa','Nedbank','Other'].map(bank=><TouchableOpacity key={bank} style={[s.chip,bankingForm.bank===bank&&s.chipSelected]} onPress={()=>setBankingForm(v=>({...v,bank}))}><Text style={[s.chipText,bankingForm.bank===bank&&{color:C.white}]}>{bank}</Text></TouchableOpacity>)}</View><Text style={s.label}>Account type</Text><View style={s.chips}>{['Savings','Current','Cheque'].map(accountType=><TouchableOpacity key={accountType} style={[s.chip,bankingForm.accountType===accountType&&s.chipSelected]} onPress={()=>setBankingForm(v=>({...v,accountType}))}><Text style={[s.chipText,bankingForm.accountType===accountType&&{color:C.white}]}>{accountType}</Text></TouchableOpacity>)}</View><View style={s.notice}><Text style={s.noticeText}>Card details: Not linked. A future secure payment provider will manage card updates. Identity and bank ownership checks are not active in this demo.</Text></View><Button label={busy?'Saving...':'Save demo banking preferences'} disabled={busy} onPress={saveBanking}/><Button label="Cancel" outline onPress={()=>setBankingOpen(false)}/></View>}
             <TouchableOpacity style={s.plan} onPress={()=>setTermsOpen(v=>!v)} accessibilityRole="button"><Text style={s.planTitle}>Terms &amp; Conditions</Text><Text style={s.planDetail}>Review savings, withdrawals and account safety →</Text></TouchableOpacity>{termsOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Terms &amp; Conditions</Text>{TERMS.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}
             <TouchableOpacity style={s.plan} accessibilityRole="button" onPress={()=>setMaturityGuideOpen(v=>!v)}><Text style={s.planTitle}>Savings Maturity &amp; Withdrawals</Text><Text style={s.planDetail}>Learn when your savings unlock and how withdrawal checks work →</Text></TouchableOpacity>{maturityGuideOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Savings Maturity &amp; Withdrawals</Text>{MATURITY_GUIDE.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}
             <Text style={s.sectionTitle}>Identity & security</Text>
