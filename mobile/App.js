@@ -58,7 +58,7 @@ export default function App() {
     const target=Number(editTarget);
     if(!p||!editName.trim()||!/^\d+(\.\d{1,2})?$/.test(editTarget.trim())||target<=0||target>100000000||target<Number(p.savedAmount))
       return notify('Check your changes','Enter a name and a target at least equal to your saved balance, with up to two decimals.');
-    const summary='Update '+p.name+'?\\n\\nName: '+p.name+' → '+editName.trim()+'\\nTarget: '+money(p.targetAmount)+' → '+money(target)+'\\n\\nYour savings and maturity date will not change.';
+    const summary='Update '+p.name+'?\n\nName: '+p.name+' → '+editName.trim()+'\nTarget: '+money(p.targetAmount)+' → '+money(target)+'\n\nYour savings and maturity date will not change.';
     const proceed=async()=>{
       setBusy(true);
       try{
