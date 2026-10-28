@@ -14,6 +14,15 @@ const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n
 const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['mobileNumber','Mobile number (e.g. 0821234567)'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
 const TERMS_VERSION='2026-10-28-demo-v1';
 const TERMS=[["Demo service","Piggy Bank is a demonstration only. Balances and deposits are simulated. No real money is held, transferred or withdrawn."],["Locked savings","In a future live service, savings remain locked until the plan maturity date. Reaching your goal early does not permit early withdrawal. Current demo withdrawals are disabled."],["Identity checks","A future withdrawal requires a matured plan and successful identity, liveness and payout-account verification. If the verification does not match, the withdrawal will be blocked pending review. These checks are not yet implemented."],["Contributions and goals","Contributions are flexible and simulated. Changing a goal name or target does not change its maturity date or erase saved amounts."],["Keep your account safe","Protect your password and device. Never share OTPs, PINs or CVVs. Report suspicious activity. Never enter real bank or card details into this demo."],["Payments and privacy","A future real-money version will need a secure payment provider, bank-account verification, privacy disclosures and appropriate POPIA safeguards. CVVs must never be stored after authorisation."],["Important limitations","These draft demo terms are not a legally reviewed financial services agreement. Real-money operations require regulatory and legal review, fees and dispute policies, and suitable provider arrangements."]];
+const MATURITY_GUIDE=[
+['What is maturity?','Maturity is the end of your selected savings period. Your plan shows its maturity date and a countdown.'],
+['Can I withdraw early?','No. Under the intended locked-savings rules, withdrawals are unavailable until the plan matures, even if you reach your target early.'],
+['What happens if I save more or less?','You can contribute flexible amounts at any time. Saving more or less than your target does not move your maturity date.'],
+['What happens on the maturity date?','A matured plan becomes eligible for a withdrawal request, but payment is not automatic. Verification and other applicable checks must be completed first.'],
+['How will withdrawals work?','In the future live service, you will select a verified payout bank account, request a withdrawal and complete secure identity and liveness checks. The service will verify account ownership and process an eligible request through its payment provider.'],
+['What if verification fails?','If your identity, face/liveness verification or bank account ownership does not match, the withdrawal is blocked pending secure review. Do not share passwords, OTPs, PINs or CVVs with anyone.'],
+['What works today?','Piggy Bank currently uses simulated deposits and balances. No real funds are held and withdrawals, biometric matching and bank payouts are not available yet.']
+];
 const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
 const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -40,6 +49,7 @@ export default function App() {
   const [values,setValues] = useState({});
   const [registrationStep,setRegistrationStep] = useState(1);
   const [termsOpen,setTermsOpen] = useState(false);
+  const [maturityGuideOpen,setMaturityGuideOpen] = useState(false);
   const [termsAccepted,setTermsAccepted] = useState(false);
   const [demoPayment,setDemoPayment] = useState({bank:'',accountType:'',cardConfirmed:false});
   const [busy,setBusy] = useState(false);
@@ -287,7 +297,7 @@ export default function App() {
                   </View>
                   <Text style={[s.planDetail,{textAlign:'center'}]}>{money(p.savedAmount)} saved of {money(p.targetAmount)}</Text>
                   <View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*Number(p.savedAmount)/Number(p.targetAmount)))+'%'}]}/></View>
-                  <View style={s.countdown}><Text style={s.countdownTitle}>MATURITY COUNTDOWN</Text><Text style={s.countdownDays}>{daysUntil(p.maturesOn)===0?'Matured':daysUntil(p.maturesOn)+' days left'}</Text><Text style={s.countdownSub}>Savings unlock date: {p.maturesOn}</Text></View>
+                  <View style={s.countdown}><Text style={s.countdownTitle}>MATURITY COUNTDOWN</Text><Text style={s.countdownDays}>{daysUntil(p.maturesOn)===0?'Matured':daysUntil(p.maturesOn)+' days left'}</Text><Text style={s.countdownSub}>Maturity date: {p.maturesOn}</Text><Text style={s.emptyText}>Withdrawal requests are not available in this demo. In the planned live service, withdrawals require maturity and successful identity and bank verification.</Text></View>
                   <View style={s.planLine}/>
                   <Text style={s.planDetail}>Plan: {p.planType==='custom'?'Custom':p.planType.charAt(0).toUpperCase()+p.planType.slice(1)}</Text>
                   <Text style={s.planDetail}>Started: {p.startsOn}</Text>
@@ -343,6 +353,7 @@ export default function App() {
               <Button label="Cancel" outline onPress={()=>setProfileOpen(false)}/>
             </View>}
             <TouchableOpacity style={s.plan} onPress={()=>setTermsOpen(v=>!v)} accessibilityRole="button"><Text style={s.planTitle}>Terms &amp; Conditions</Text><Text style={s.planDetail}>Review savings, withdrawals and account safety →</Text></TouchableOpacity>{termsOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Terms &amp; Conditions</Text>{TERMS.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}
+            <TouchableOpacity style={s.plan} accessibilityRole="button" onPress={()=>setMaturityGuideOpen(v=>!v)}><Text style={s.planTitle}>Savings Maturity &amp; Withdrawals</Text><Text style={s.planDetail}>Learn when your savings unlock and how withdrawal checks work →</Text></TouchableOpacity>{maturityGuideOpen&&<View style={s.notice}><Text style={s.sectionTitle}>Savings Maturity &amp; Withdrawals</Text>{MATURITY_GUIDE.map(([heading,body])=><View key={heading} style={{marginBottom:14}}><Text style={s.label}>{heading}</Text><Text style={s.noticeText}>{body}</Text></View>)}</View>}
             <Text style={s.sectionTitle}>Identity & security</Text>
             <View style={s.security}><View style={s.securityBadge}><Text style={s.securityBadgeText}>NOT ENROLLED</Text></View><Text style={s.securityTitle}>Face verification</Text><Text style={s.emptyText}>Required before your first cash-out. Secure biometric enrollment and matching are not available in this demo.</Text>
             <View style={s.faceCircle}><Icon name="profile" size={64} color={C.green}/><Text style={s.faceText}>Face scan preview</Text></View>
