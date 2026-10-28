@@ -48,7 +48,7 @@ export default function App() {
   };
   const submitDeposit = async () => {
     const amount=Number(depositAmount);
-    if(!/^\\d+(\\.\\d{1,2})?$/.test(depositAmount.trim())||!Number.isFinite(amount)||amount<=0||amount>100000000)
+    if(!/^\d+(\.\d{1,2})?$/.test(depositAmount.trim())||!Number.isFinite(amount)||amount<=0||amount>100000000)
       return notify('Check amount','Enter an amount greater than R0, with at most two decimal places.');
     if(!depositPlanId) return notify('Choose a plan','Select the savings plan to receive this deposit.');
     setBusy(true);
@@ -107,7 +107,7 @@ export default function App() {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadDeposits();loadDeposits();return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadDeposits();return; }
         await sessionStore.remove();
       }
     } catch {}
