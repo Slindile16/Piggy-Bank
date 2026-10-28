@@ -3,7 +3,24 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, S
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:4000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || (Platform.OS === 'web' ? 'http://localhost:4000' : 'http://10.0.2.2:4000');
+
+// Browser preview only: native apps continue to use the device's secure storage.
+const sessionStore = {
+  get: () => Platform.OS === 'web'
+    ? Promise.resolve(window.sessionStorage.getItem('piggy_bank_session'))
+    : SecureStore.getItemAsync('session'),
+  set: (value) => Platform.OS === 'web'
+    ? Promise.resolve(window.sessionStorage.setItem('piggy_bank_session', value))
+    : SecureStore.setItemAsync('session', value),
+  remove: () => Platform.OS === 'web'
+    ? Promise.resolve(window.sessionStorage.removeItem('piggy_bank_session'))
+    : SecureStore.deleteItemAsync('session')
+};
+const showError = (title, message) => {
+  if (Platform.OS === 'web') window.alert(`${title}: ${message}`);
+  else Alert.alert(title, message);
+};
 const fields = [
   ['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],
   ['address','Residential address'],['gender','Gender (Female/Male/Non-binary/Other)'],
@@ -16,31 +33,31 @@ export default function App() {
   const [busy,setBusy] = useState(false);
   useEffect(() => { (async () => {
     try {
-      const saved = await SecureStore.getItemAsync('session');
+      const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(`${API_URL}/api/v1/auth/me`,{headers:{Authorization:`Bearer ${saved}`}});
         if (response.ok) { setUser((await response.json()).user); setScreen('home'); return; }
-        await SecureStore.deleteItemAsync('session');
+        await sessionStore.remove();
       }
     } catch {}
     setScreen('register');
   })(); }, []);
   const submit = async () => {
-    if (screen === 'register' && values.password !== values.confirmPassword) return Alert.alert('Check password','Passwords do not match.');
+    if (screen === 'register' && values.password !== values.confirmPassword) return showError('Check password','Passwords do not match.');
     setBusy(true);
     try {
       const endpoint = screen === 'register' ? 'register' : 'login';
       const response = await fetch(`${API_URL}/api/v1/auth/${endpoint}`,{
-        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(values)
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(screen === 'register' ? (({confirmPassword, ...data}) => data)(values) : values)
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Please try again.');
-      await SecureStore.setItemAsync('session',data.token);
+      await sessionStore.set(data.token);
       setUser(data.user);setValues({});setScreen('home');
-    } catch(e) { Alert.alert('Unable to continue',e.message); }
+    } catch(e) { showError('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
-  const logout = async () => { await SecureStore.deleteItemAsync('session');setUser(null);setScreen('login'); };
+  const logout = async () => { await sessionStore.remove();setUser(null);setScreen('login'); };
   if (screen === 'loading') return <View style={styles.center}><ActivityIndicator color="#167a56" size="large" /></View>;
   return <KeyboardAvoidingView style={styles.root} behavior={Platform.OS==='ios'?'padding':undefined}>
     <StatusBar style="dark" />
