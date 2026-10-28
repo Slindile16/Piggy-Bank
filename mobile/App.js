@@ -17,6 +17,18 @@ const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getT
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const demoMessage = () => notify('Demo feature','Savings and withdrawals are not yet connected to the backend. No money is being moved.');
 const Button = ({label,onPress,outline=false,disabled=false}) => <TouchableOpacity disabled={disabled} onPress={onPress} style={[s.button,outline&&s.outline,disabled&&{opacity:.55}]}><Text style={[s.buttonText,outline&&{color:C.forest}]}>{label}</Text></TouchableOpacity>;
+const Icon = ({name,size=22,color=C.green}) => {
+  const line={position:'absolute',backgroundColor:color,borderRadius:3};
+  const box={width:size,height:size,position:'relative',alignItems:'center',justifyContent:'center'};
+  if(name==='home')return <View style={box}><View style={{width:size*.59,height:size*.48,borderWidth:2,borderColor:color,borderTopWidth:0,borderRadius:2,marginTop:size*.26}}/><View style={[line,{width:size*.65,height:2,top:size*.24,transform:[{rotate:'-38deg'}],left:0}]}/><View style={[line,{width:size*.65,height:2,top:size*.24,transform:[{rotate:'38deg'}],right:0}]}/></View>;
+  if(name==='savings')return <View style={box}><View style={{width:size*.8,height:size*.67,borderWidth:2,borderColor:color,borderRadius:5,justifyContent:'center',alignItems:'center'}}><View style={{width:size*.28,height:size*.28,borderRadius:size*.14,borderWidth:2,borderColor:color}}/></View></View>;
+  if(name==='activity')return <View style={box}><View style={{width:size*.79,height:size*.79,borderRadius:size*.4,borderWidth:2,borderColor:color}}/><View style={[line,{width:2,height:size*.29,top:size*.27,left:size*.49}]}/><View style={[line,{width:size*.22,height:2,top:size*.52,left:size*.49}]}/></View>;
+  if(name==='profile')return <View style={box}><View style={{width:size*.32,height:size*.32,borderWidth:2,borderColor:color,borderRadius:size*.16,position:'absolute',top:size*.09}}/><View style={{width:size*.73,height:size*.34,borderWidth:2,borderColor:color,borderBottomWidth:0,borderTopLeftRadius:size*.4,borderTopRightRadius:size*.4,position:'absolute',bottom:size*.08}}/></View>;
+  if(name==='plus')return <View style={box}><View style={[line,{width:size*.7,height:2}]}/><View style={[line,{height:size*.7,width:2}]}/></View>;
+  if(name==='arrow')return <View style={box}><View style={[line,{width:size*.55,height:2,transform:[{rotate:'-45deg'}]}]}/><View style={[line,{width:size*.3,height:2,top:size*.23,right:size*.12}]}/><View style={[line,{height:size*.3,width:2,top:size*.23,right:size*.12}]}/></View>;
+  if(name==='lock')return <View style={box}><View style={{width:size*.54,height:size*.43,borderWidth:2,borderColor:color,borderRadius:3,position:'absolute',bottom:size*.13}}/><View style={{width:size*.35,height:size*.35,borderWidth:2,borderColor:color,borderBottomWidth:0,borderTopLeftRadius:size*.18,borderTopRightRadius:size*.18,position:'absolute',top:size*.12}}/></View>;
+  return <View style={box}><View style={{width:size*.76,height:size*.76,borderRadius:size*.4,borderWidth:2,borderColor:color}}/></View>;
+};
 export default function App() {
   const [screen,setScreen] = useState('loading');
   const [tab,setTab] = useState('Home');
@@ -173,7 +185,7 @@ export default function App() {
     <StatusBar style="dark"/>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.scroll}>
       <View style={s.shell}>
-        <View style={s.header}><Text style={s.brand}>🐷  Piggy Bank</Text><View style={s.brandPill}><Text style={s.brandPillText}>EMERALD LUXE</Text></View></View>
+        <View style={s.header}><View style={s.brandGroup}><View style={s.brandMark}><Icon name="savings" size={20} color={C.gold}/></View><Text style={s.brand}>Piggy Bank</Text></View><View style={s.brandPill}><Text style={s.brandPillText}>EMERALD LUXE</Text></View></View>
         {!loggedIn ? <View style={s.auth}>
           <Text style={s.eyebrow}>YOUR FUTURE, SECURED</Text>
           <Text style={s.title}>{screen==='register'?'Start saving beautifully.':'Welcome back.'}</Text>
@@ -188,13 +200,13 @@ export default function App() {
           </View>
         </View> : <>
           {tab==='Home'&&<>
-            <Text style={s.eyebrow}>GOOD TO HAVE YOU HERE</Text><Text style={s.title}>Hello, {user?.firstName||'Saver'} 👋</Text>
+            <Text style={s.eyebrow}>GOOD TO HAVE YOU HERE</Text><Text style={s.title}>Hello, {user?.firstName||'Saver'}</Text>
             <Text style={s.subtitle}>Your future is worth saving for.</Text>
             <View style={s.balance}><Text style={s.balanceLabel}>TOTAL SAVINGS  ·  DEMO</Text><Text style={s.balanceAmount}>{money(savedPlans.reduce((sum,p)=>sum+Number(p.savedAmount||0),0))}</Text><View style={s.goldLine}/><Text style={s.balanceFoot}>{savedPlans.length} active plans    •    {deposits.length} demo deposits</Text>{savedPlans.length>0&&<View style={s.balanceBreakdown}><Text style={s.balanceBreakdownTitle}>SAVINGS BY PLAN</Text>{savedPlans.map(p=><View key={p.id} style={s.balanceBreakdownRow}><Text style={s.balancePlanName} numberOfLines={1}>{p.name}</Text><Text style={s.balancePlanAmount}>{money(p.savedAmount)}</Text></View>)}</View>}</View>
             <Text style={s.sectionTitle}>Quick actions</Text>
-            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>beginPlan(plans[0])}><Text style={s.actionIcon}>＋</Text><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={()=>beginDeposit()}><Text style={s.actionIcon}>↗</Text><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
+            <View style={s.actions}><TouchableOpacity style={s.action} onPress={()=>beginPlan(plans[0])}><Icon name="plus" size={26}/><Text style={s.actionText}>New savings plan</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={()=>beginDeposit()}><Icon name="arrow" size={26}/><Text style={s.actionText}>Add savings</Text></TouchableOpacity></View>
             <View style={s.sectionRow}><Text style={s.sectionTitle}>My savings plans</Text><TouchableOpacity onPress={()=>nav('Savings')}><Text style={s.greenLink}>Explore →</Text></TouchableOpacity></View>
-            {savedPlans.length===0?<View style={s.empty}><Text style={s.emptyIcon}>🐷</Text><Text style={s.emptyTitle}>Your journey starts here</Text><Text style={s.emptyText}>Choose a savings plan to start building your future.</Text><Button label="Explore savings plans" onPress={()=>nav('Savings')}/></View>:savedPlans.map(p=><TouchableOpacity key={p.id} style={s.plan} onPress={()=>openPlanDetails(p.id)} accessibilityRole="button" accessibilityLabel={'View details for '+p.name}><Text style={s.planTitle}>{p.name}  ›</Text><Text style={s.planDetail}>{p.durationMonths} months · Locked until {p.maturesOn}</Text><Text style={s.planDetail}>{money(p.savedAmount)} of {money(p.targetAmount)} saved</Text><View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*p.savedAmount/p.targetAmount))+'%'}]}/></View><Text style={s.planDetail}>{Math.round(100*p.savedAmount/p.targetAmount)}% complete · Suggested {money(p.targetAmount/p.durationMonths)}/month</Text></TouchableOpacity>)}
+            {savedPlans.length===0?<View style={s.empty}><View style={s.emptyGraphic}><Icon name="savings" size={32}/></View><Text style={s.emptyTitle}>Your journey starts here</Text><Text style={s.emptyText}>Choose a savings plan to start building your future.</Text><Button label="Explore savings plans" onPress={()=>nav('Savings')}/></View>:savedPlans.map(p=><TouchableOpacity key={p.id} style={s.plan} onPress={()=>openPlanDetails(p.id)} accessibilityRole="button" accessibilityLabel={'View details for '+p.name}><Text style={s.planTitle}>{p.name}  ›</Text><Text style={s.planDetail}>{p.durationMonths} months · Locked until {p.maturesOn}</Text><Text style={s.planDetail}>{money(p.savedAmount)} of {money(p.targetAmount)} saved</Text><View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*p.savedAmount/p.targetAmount))+'%'}]}/></View><Text style={s.planDetail}>{Math.round(100*p.savedAmount/p.targetAmount)}% complete · Suggested {money(p.targetAmount/p.durationMonths)}/month</Text></TouchableOpacity>)}
           </>}
           {tab==='Savings'&&<>
             {depositOpen&&<View style={s.panel}>
@@ -257,7 +269,7 @@ export default function App() {
                 {planChanges.length===0?<Text style={[s.emptyText,{marginBottom:18}]}>No changes to this goal yet.</Text>:planChanges.map(change=><View key={change.id} style={s.activityRow}><View style={{flex:1}}><Text style={s.planDetail}>{new Date(change.createdAt).toLocaleString('en-ZA')}</Text>{change.oldName!==change.newName&&<Text style={s.planDetail}>Name: {change.oldName} → {change.newName}</Text>}{change.oldTarget!==change.newTarget&&<Text style={s.planDetail}>Target: {money(change.oldTarget)} → {money(change.newTarget)}</Text>}</View></View>)}
                 <Text style={s.sectionTitle}>Deposit history</Text>
                 {planDeposits.length===0?<View style={s.empty}><Text style={s.emptyText}>No deposits recorded for this plan yet.</Text></View>:planDeposits.map(d=><View key={d.id} style={s.activityRow}><View style={{flex:1}}><Text style={s.planTitle}>Simulated deposit</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')}</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
-                <View style={s.notice}><Text style={s.noticeText}>🔒 Cash-out remains disabled. This plan uses simulated funds only; facial verification and withdrawal checks are not implemented yet.</Text></View>
+                <View style={s.notice}><Text style={s.noticeText}>Cash-out remains disabled. This plan uses simulated funds only; facial verification and withdrawal checks are not implemented yet.</Text></View>
               </View>;
             })()}
             {depositOpen || detailPlanId ? null : selectedPlan ? <View style={s.panel}>
@@ -267,7 +279,7 @@ export default function App() {
               <Text style={[s.label,{marginTop:20}]}>Savings goal name</Text><TextInput style={s.input} placeholder="e.g. My First Car" value={planForm.name} onChangeText={name=>setPlanForm(v=>({...v,name}))}/>
               <Text style={s.label}>Target amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} placeholder="5000" keyboardType="decimal-pad" value={planForm.targetAmount} onChangeText={targetAmount=>setPlanForm(v=>({...v,targetAmount}))}/></View>
               {selectedPlan.type==='custom'&&<><Text style={s.label}>Duration in months (1–60)</Text><TextInput style={s.input} keyboardType="number-pad" value={planForm.durationMonths} onChangeText={durationMonths=>setPlanForm(v=>({...v,durationMonths}))}/></>}
-              <View style={s.notice}><Text style={s.noticeText}>🔒 Locked for {planForm.durationMonths||'?'} months. Suggested monthly savings: {Number(planForm.targetAmount)>0&&Number(planForm.durationMonths)>0?money(Number(planForm.targetAmount)/Number(planForm.durationMonths)):'—'}. Cash-out is not available in this demo.</Text></View>
+              <View style={s.notice}><Text style={s.noticeText}>Locked for {planForm.durationMonths||'?'} months. Suggested monthly savings: {Number(planForm.targetAmount)>0&&Number(planForm.durationMonths)>0?money(Number(planForm.targetAmount)/Number(planForm.durationMonths)):'—'}. Cash-out is not available in this demo.</Text></View>
               <Button label={busy?'Creating plan...':'Create locked savings plan'} disabled={busy} onPress={createPlan}/>
             </View> : <>
               {plans.map(p=><View key={p.type} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months?p.months+' MONTHS':'1–60 MONTHS'}</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings plan</Text><Button label="Choose plan" onPress={()=>beginPlan(p)} outline/></View>)}
@@ -278,20 +290,20 @@ export default function App() {
           </>}
           {tab==='Activity'&&<>
             <Text style={s.eyebrow}>YOUR MONEY STORY</Text><Text style={s.title}>Activity</Text><Text style={s.subtitle}>Track your savings journey in one place.</Text>
-            {deposits.length===0?<View style={s.empty}><Text style={s.emptyIcon}>◷</Text><Text style={s.emptyTitle}>No activity yet</Text><Text style={s.emptyText}>Your simulated deposits will appear here.</Text></View>:deposits.map(d=><View key={d.id} style={s.activityRow}><View><Text style={s.planTitle}>{d.planName}</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')} · Demo deposit</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
+            {deposits.length===0?<View style={s.empty}><View style={s.emptyGraphic}><Icon name="activity" size={32}/></View><Text style={s.emptyTitle}>No activity yet</Text><Text style={s.emptyText}>Your simulated deposits will appear here.</Text></View>:deposits.map(d=><View key={d.id} style={s.activityRow}><View><Text style={s.planTitle}>{d.planName}</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')} · Demo deposit</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
           </>}
           {tab==='Profile'&&<>
             <Text style={s.eyebrow}>ACCOUNT & SECURITY</Text><Text style={s.title}>Your profile</Text><Text style={s.subtitle}>Manage your personal information and security settings.</Text>
             <View style={s.profileCard}><View style={s.avatar}><Text style={s.avatarText}>{(user?.firstName||'P').charAt(0).toUpperCase()}</Text></View><View><Text style={s.profileName}>{[user?.firstName,user?.surname].filter(Boolean).join(' ')||'Piggy Bank Saver'}</Text><Text style={s.profileEmail}>{user?.email||'Account holder'}</Text></View></View>
             <Text style={s.sectionTitle}>Identity & security</Text>
             <View style={s.security}><View style={s.securityBadge}><Text style={s.securityBadgeText}>NOT ENROLLED</Text></View><Text style={s.securityTitle}>Face verification</Text><Text style={s.emptyText}>Required before your first cash-out. Secure biometric enrollment and matching are not available in this demo.</Text>
-            <View style={s.faceCircle}><Text style={s.faceIcon}>◉</Text><Text style={s.faceText}>Face scan preview</Text></View>
+            <View style={s.faceCircle}><Icon name="profile" size={64} color={C.green}/><Text style={s.faceText}>Face scan preview</Text></View>
             <Button label="Set up face verification · Coming soon" onPress={()=>notify('Security feature coming soon','A secure identity check, liveness detection and biometric matching must be implemented before real withdrawals can be enabled.')}/>
             </View>
             <View style={s.notice}><Text style={s.noticeText}>Cash-out is disabled until savings, identity verification and server-side withdrawal controls are implemented.</Text></View>
             <Button label="Log out" onPress={logout} outline/>
           </>}
-          <View style={s.bottomNav}>{[['Home','⌂'],['Savings','◈'],['Activity','◷'],['Profile','○']].map(([name,icon])=><TouchableOpacity key={name} onPress={()=>nav(name)} style={[s.navItem,tab===name&&s.navActive]}><Text style={[s.navIcon,tab===name&&{color:C.green}]}>{icon}</Text><Text style={[s.navLabel,tab===name&&{color:C.green,fontWeight:'800'}]}>{name}</Text></TouchableOpacity>)}</View>
+          <View style={s.bottomNav}>{[['Home','home'],['Savings','savings'],['Activity','activity'],['Profile','profile']].map(([name,icon])=><TouchableOpacity key={name} onPress={()=>nav(name)} style={[s.navItem,tab===name&&s.navActive]}><Icon name={icon} size={22} color={tab===name?C.green:C.muted}/><Text style={[s.navLabel,tab===name&&{color:C.green,fontWeight:'800'}]}>{name}</Text></TouchableOpacity>)}</View>
         </>}
         <Text style={s.footer}>PIGGY BANK  •  DEMONSTRATION ONLY  •  NO REAL MONEY</Text>
       </View>
@@ -302,6 +314,7 @@ const s=StyleSheet.create({
   root:{flex:1,backgroundColor:C.ivory},center:{flex:1,justifyContent:'center',alignItems:'center',backgroundColor:C.ivory},
   scroll:{flexGrow:1,paddingHorizontal:18,paddingTop:35,paddingBottom:35,alignItems:'center'},
   shell:{width:'100%',maxWidth:560},
+  brandGroup:{flexDirection:'row',alignItems:'center',gap:10},brandMark:{backgroundColor:C.forest,width:35,height:35,borderRadius:11,alignItems:'center',justifyContent:'center'},emptyGraphic:{width:56,height:56,borderRadius:16,backgroundColor:'#EDF6EF',alignItems:'center',justifyContent:'center',marginBottom:12},
   header:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:38,flexWrap:'wrap',gap:8},
   brand:{fontSize:23,fontWeight:'900',color:C.forest},brandPill:{backgroundColor:'#E7EDE8',paddingHorizontal:10,paddingVertical:7,borderRadius:20},brandPillText:{fontSize:9,fontWeight:'800',color:C.green,letterSpacing:1.3},
   eyebrow:{fontSize:11,fontWeight:'800',letterSpacing:1.8,color:C.green,marginBottom:10},title:{fontSize:30,fontWeight:'900',color:C.forest,marginBottom:8},subtitle:{fontSize:14,lineHeight:22,color:C.muted,marginBottom:23},
