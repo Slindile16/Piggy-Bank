@@ -183,7 +183,7 @@ export default function App() {
     setBusy(true);
     try {
       const endpoint=screen==='register'?'register':'login';
-      const body=screen==='register'?({...(({confirmPassword,...data})=>data)(values),termsVersion:TERMS_VERSION,termsAccepted:true}:{email:values.email,password:values.password};
+      const body=screen==='register'?{...(({confirmPassword,...data})=>data)(values),termsVersion:TERMS_VERSION,termsAccepted:true}:{email:values.email,password:values.password};
       const response=await fetch(API_URL+'/api/v1/auth/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const data=await response.json();
       if (!response.ok) throw new Error(data.error||'Please try again.');
