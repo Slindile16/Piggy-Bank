@@ -12,16 +12,16 @@ const sessionStore = {
 };
 const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n'+message) : Alert.alert(title,message);
 const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['mobileNumber','Mobile number (e.g. 0821234567)'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
-const TERMS_VERSION='2026-10-28-demo-v1';
-const TERMS=[["Demo service","Piggy Bank is a demonstration only. Balances and deposits are simulated. No real money is held, transferred or withdrawn."],["Locked savings","In a future live service, savings remain locked until the plan maturity date. Reaching your goal early does not permit early withdrawal. Current demo withdrawals are disabled."],["Identity checks","A future withdrawal requires a matured plan and successful identity, liveness and payout-account verification. If the verification does not match, the withdrawal will be blocked pending review. These checks are not yet implemented."],["Contributions and goals","Contributions are flexible and simulated. Changing a goal name or target does not change its maturity date or erase saved amounts."],["Keep your account safe","Protect your password and device. Never share OTPs, PINs or CVVs. Report suspicious activity. Never enter real bank or card details into this demo."],["Payments and privacy","A future real-money version will need a secure payment provider, bank-account verification, privacy disclosures and appropriate POPIA safeguards. CVVs must never be stored after authorisation."],["Important limitations","These draft demo terms are not a legally reviewed financial services agreement. Real-money operations require regulatory and legal review, fees and dispute policies, and suitable provider arrangements."]];
+const TERMS_VERSION='2026-10-28-demo-v2';
+const TERMS=[["Demo service","Piggy Bank is a demonstration only. Balances and deposits are simulated. No real money is held, transferred or withdrawn."],["Locked savings","The proposed policy allows partial or full early withdrawals with a 2% penalty on the amount withdrawn. After maturity, no early withdrawal penalty applies. Any real-money fee is subject to legal review."],["Identity checks","A future real-money withdrawal requires successful identity, liveness and payout-account verification, whether early or matured. If the verification does not match, the withdrawal will be blocked pending review. These checks are not yet implemented."],["Contributions and goals","Contributions are flexible and simulated. Changing a goal name or target does not change its maturity date or erase saved amounts."],["Keep your account safe","Protect your password and device. Never share OTPs, PINs or CVVs. Report suspicious activity. Never enter real bank or card details into this demo."],["Payments and privacy","A future real-money version will need a secure payment provider, bank-account verification, privacy disclosures and appropriate POPIA safeguards. CVVs must never be stored after authorisation."],["Important limitations","These draft demo terms are not a legally reviewed financial services agreement. Real-money operations require regulatory and legal review, fees and dispute policies, and suitable provider arrangements."]];
 const MATURITY_GUIDE=[
 ['What is maturity?','Maturity is the end of your selected savings period. Your plan shows its maturity date and a countdown.'],
-['Can I withdraw early?','No. Under the intended locked-savings rules, withdrawals are unavailable until the plan matures, even if you reach your target early.'],
+['Can I withdraw early?','Yes, under the proposed policy you may withdraw part or all of your savings before maturity. A 2% penalty applies to the withdrawn amount, not the entire savings balance.'],
 ['What happens if I save more or less?','You can contribute flexible amounts at any time. Saving more or less than your target does not move your maturity date.'],
-['What happens on the maturity date?','A matured plan becomes eligible for a withdrawal request, but payment is not automatic. Verification and other applicable checks must be completed first.'],
-['How will withdrawals work?','In the future live service, you will select a verified payout bank account, request a withdrawal and complete secure identity and liveness checks. The service will verify account ownership and process an eligible request through its payment provider.'],
+['What happens on the maturity date?','A matured plan becomes eligible for penalty-free withdrawal, but payment is not automatic. Verification and other applicable checks must be completed first.'],
+['How will withdrawals work?','You may request a partial withdrawal and continue saving, or withdraw the full balance. In the future live service, you will select a verified payout bank account, request a withdrawal and complete secure identity and liveness checks. The service will verify account ownership and process an eligible request through its payment provider.'],
 ['What if verification fails?','If your identity, face/liveness verification or bank account ownership does not match, the withdrawal is blocked pending secure review. Do not share passwords, OTPs, PINs or CVVs with anyone.'],
-['What works today?','Piggy Bank currently uses simulated deposits and balances. No real funds are held and withdrawals, biometric matching and bank payouts are not available yet.']
+['What works today?','Piggy Bank currently uses simulated deposits and balances. No real funds are held. Demo withdrawals change only simulated balances; biometric matching and bank payouts are not available yet.']
 ];
 const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
 const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
@@ -56,6 +56,10 @@ export default function App() {
   const [savedPlans,setSavedPlans] = useState([]);
   const [plansLoading,setPlansLoading] = useState(false);
   const [deposits,setDeposits] = useState([]);
+  const [withdrawals,setWithdrawals] = useState([]);
+  const [withdrawOpen,setWithdrawOpen] = useState(false);
+  const [withdrawAmount,setWithdrawAmount] = useState('');
+  const [withdrawConfirmed,setWithdrawConfirmed] = useState(false);
   const [depositOpen,setDepositOpen] = useState(false);
   const [detailPlanId,setDetailPlanId] = useState(null);
   const [editingPlan,setEditingPlan] = useState(false);
@@ -74,6 +78,31 @@ export default function App() {
       setDeposits(data.deposits||[]);
     }catch(e){notify('Activity',e.message);}
   };
+
+  const loadWithdrawals=async()=>{
+    try{const saved=await sessionStore.get();if(!saved)return;const response=await fetch(API_URL+'/api/v1/savings/withdrawals',{headers:{Authorization:'Bearer '+saved}});if(response.ok)setWithdrawals((await response.json()).withdrawals||[]);}catch(e){console.warn('Demo withdrawals',e);}
+  };
+  const submitWithdrawal=async(plan)=>{
+    const amount=Number(withdrawAmount);
+    if(!/^\\d+(\\.\\d{1,2})?$/.test(withdrawAmount.trim())||!Number.isFinite(amount)||amount<=0||amount>Number(plan.savedAmount))return notify('Check withdrawal amount','Enter an amount above R0 and no more than your saved balance, with at most two decimals.');
+    if(!withdrawConfirmed)return notify('Confirm demo','Confirm that this withdrawal is simulated and does not transfer real money.');
+    const early=daysUntil(plan.maturesOn)>0,penalty=early?Math.round(amount*2)/100:0;
+    const summary='Withdraw '+money(amount)+' from '+plan.name+'?\\nEarly withdrawal penalty: '+money(penalty)+'\\nSimulated payout: '+money(amount-penalty)+'\\n\\nNo real money moves. Identity and bank verification are NOT performed in this demo.';
+    const proceed=async()=>{
+      setBusy(true);
+      try{
+        const saved=await sessionStore.get();
+        const response=await fetch(API_URL+'/api/v1/savings/withdrawals',{method:'POST',headers:{Authorization:'Bearer '+saved,'Content-Type':'application/json'},body:JSON.stringify({planId:plan.id,amount,confirmDemo:true})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to withdraw.');
+        setWithdrawOpen(false);setWithdrawAmount('');setWithdrawConfirmed(false);
+        await Promise.all([loadPlans(),loadWithdrawals()]);
+        notify('Demo withdrawal recorded','Simulated payout: '+money(data.withdrawal.payout)+'\\nPenalty: '+money(data.withdrawal.penalty)+'\\nNo real money moved.');
+      }catch(e){notify('Withdrawal failed',e.message);}finally{setBusy(false);}
+    };
+    if(Platform.OS==='web'){if(window.confirm(summary))await proceed();}
+    else Alert.alert('Confirm demo withdrawal',summary,[{text:'Cancel',style:'cancel'},{text:'Confirm demo withdrawal',onPress:proceed}]);
+  };
+
   const loadPlanChanges = async planId => {
     try{
       const saved=await sessionStore.get();
@@ -82,7 +111,7 @@ export default function App() {
       if(response.ok)setPlanChanges(data.changes||[]);
     }catch(e){console.warn('Unable to load change history',e);}
   };
-  const openPlanDetails = planId => { setSelectedPlan(null);setDepositOpen(false);setEditingPlan(false);setPlanChanges([]);setDetailPlanId(planId);setTab('Savings');loadDeposits();loadPlanChanges(planId); };
+  const openPlanDetails = planId => { setSelectedPlan(null);setDepositOpen(false);setEditingPlan(false);setWithdrawOpen(false);setWithdrawAmount('');setWithdrawConfirmed(false);setPlanChanges([]);setDetailPlanId(planId);setTab('Savings');loadDeposits();loadPlanChanges(planId); };
   const savePlanEdit = async () => {
     const p=savedPlans.find(item=>item.id===detailPlanId);
     const target=Number(editTarget);
@@ -175,7 +204,7 @@ export default function App() {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadDeposits();return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadWithdrawals();loadDeposits();loadWithdrawals();return; }
         await sessionStore.remove();
       }
     } catch {}
@@ -215,8 +244,8 @@ export default function App() {
     }catch(e){notify('Unable to update profile',e.message);}
     finally{setBusy(false);}
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
-  const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setProfileOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity')loadDeposits();};
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setWithdrawals([]);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
+  const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setProfileOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity'){loadDeposits();loadWithdrawals();}};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':undefined}>
@@ -297,13 +326,15 @@ export default function App() {
                   </View>
                   <Text style={[s.planDetail,{textAlign:'center'}]}>{money(p.savedAmount)} saved of {money(p.targetAmount)}</Text>
                   <View style={s.progressTrack}><View style={[s.progressFill,{width:Math.min(100,Math.max(0,100*Number(p.savedAmount)/Number(p.targetAmount)))+'%'}]}/></View>
-                  <View style={s.countdown}><Text style={s.countdownTitle}>MATURITY COUNTDOWN</Text><Text style={s.countdownDays}>{daysUntil(p.maturesOn)===0?'Matured':daysUntil(p.maturesOn)+' days left'}</Text><Text style={s.countdownSub}>Maturity date: {p.maturesOn}</Text><Text style={s.emptyText}>Withdrawal requests are not available in this demo. In the planned live service, withdrawals require maturity and successful identity and bank verification.</Text></View>
+                  <View style={s.countdown}><Text style={s.countdownTitle}>MATURITY COUNTDOWN</Text><Text style={s.countdownDays}>{daysUntil(p.maturesOn)===0?'Matured':daysUntil(p.maturesOn)+' days left'}</Text><Text style={s.countdownSub}>Maturity date: {p.maturesOn}</Text><Text style={s.emptyText}>Partial and full demo withdrawals are available. Before maturity a 2% penalty applies; after maturity it is 0%. Real withdrawals will require identity and bank verification.</Text></View>
                   <View style={s.planLine}/>
                   <Text style={s.planDetail}>Plan: {p.planType==='custom'?'Custom':p.planType.charAt(0).toUpperCase()+p.planType.slice(1)}</Text>
                   <Text style={s.planDetail}>Started: {p.startsOn}</Text>
-                  <Text style={s.planDetail}>Locked until: {p.maturesOn}</Text>
+                  <Text style={s.planDetail}>Maturity date: {p.maturesOn} · Early withdrawal penalty: 2%</Text>
                   <Text style={s.planDetail}>Suggested monthly savings: {money(Number(p.targetAmount)/p.durationMonths)}</Text>
                   <Button label="Add savings" onPress={()=>beginDeposit(p.id)}/>
+                  <Button label="Request demo withdrawal" outline onPress={()=>{setWithdrawOpen(v=>!v);setWithdrawAmount('');setWithdrawConfirmed(false);}}/>
+                  {withdrawOpen&&<View style={[s.panel,{marginTop:16}]}><Text style={s.sectionTitle}>Withdraw savings · Demo</Text><Text style={s.emptyText}>Choose a partial amount or the full balance. This changes simulated savings only. No real money is paid out and no identity or bank verification is performed.</Text><Text style={s.label}>Withdrawal amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} keyboardType="decimal-pad" placeholder="0.00" value={withdrawAmount} onChangeText={setWithdrawAmount}/></View><TouchableOpacity onPress={()=>setWithdrawAmount(Number(p.savedAmount).toFixed(2))}><Text style={s.greenLink}>Use full balance ({money(p.savedAmount)})</Text></TouchableOpacity><View style={s.notice}><Text style={s.noticeText}>Available: {money(p.savedAmount)}{'\\n'}{daysUntil(p.maturesOn)>0?'Early withdrawal · 2% penalty':'Matured · 0% penalty'}{'\\n'}Penalty: {money(/^\\d+(\\.\\d{1,2})?$/.test(withdrawAmount)&&Number(withdrawAmount)>0?(daysUntil(p.maturesOn)>0?Math.round(Number(withdrawAmount)*2)/100:0):0)}{'\\n'}Simulated payout: {money(/^\\d+(\\.\\d{1,2})?$/.test(withdrawAmount)&&Number(withdrawAmount)>0?Number(withdrawAmount)-(daysUntil(p.maturesOn)>0?Math.round(Number(withdrawAmount)*2)/100:0):0)}</Text></View><TouchableOpacity style={s.planChoice} accessibilityRole="checkbox" accessibilityState={{checked:withdrawConfirmed}} onPress={()=>setWithdrawConfirmed(v=>!v)}><Text style={s.planDetail}>{withdrawConfirmed?'☑':'☐'} I understand this is a simulation, not a real withdrawal or verification.</Text></TouchableOpacity><Button label={busy?'Processing...':'Review demo withdrawal'} disabled={busy||!withdrawConfirmed||Number(p.savedAmount)<=0} onPress={()=>submitWithdrawal(p)}/><Button label="Cancel" outline onPress={()=>setWithdrawOpen(false)}/></View>}
                   <Button label="Edit savings goal" outline onPress={()=>{setEditName(p.name);setEditTarget(String(p.targetAmount));setEditingPlan(true);}}/>
                   {editingPlan&&<View style={[s.panel,{marginTop:16}]}>
                     <Text style={s.sectionTitle}>Edit your goal</Text>
@@ -339,6 +370,7 @@ export default function App() {
           </>}
           {tab==='Activity'&&<>
             <Text style={s.eyebrow}>YOUR MONEY STORY</Text><Text style={s.title}>Activity</Text><Text style={s.subtitle}>Track your savings journey in one place.</Text>
+            <Text style={s.sectionTitle}>Simulated withdrawals</Text>{withdrawals.length===0?<Text style={s.emptyText}>No demo withdrawals yet.</Text>:withdrawals.map(w=><View key={w.id} style={s.activityRow}><View style={{flex:1}}><Text style={s.planTitle}>{w.planName}</Text><Text style={s.planDetail}>{new Date(w.createdAt).toLocaleString('en-ZA')} · {w.early?'Early':'Matured'} · {w.fullWithdrawal?'Full':'Partial'}</Text><Text style={s.planDetail}>Penalty {money(w.penalty)} · Demo payout {money(w.payout)}</Text></View><Text style={s.activityAmount}>−{money(w.amount)}</Text></View>)}<Text style={s.sectionTitle}>Simulated deposits</Text>
             {deposits.length===0?<View style={s.empty}><View style={s.emptyGraphic}><Icon name="activity" size={32}/></View><Text style={s.emptyTitle}>No activity yet</Text><Text style={s.emptyText}>Your simulated deposits will appear here.</Text></View>:deposits.map(d=><View key={d.id} style={s.activityRow}><View><Text style={s.planTitle}>{d.planName}</Text><Text style={s.planDetail}>{new Date(d.createdAt).toLocaleString('en-ZA')} · Demo deposit</Text></View><Text style={s.activityAmount}>+{money(d.amount)}</Text></View>)}
           </>}
           {tab==='Profile'&&<>
