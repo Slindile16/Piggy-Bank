@@ -1,0 +1,1 @@
+{"expo":{"name":"Piggy Bank","slug":"piggy-bank","version":"1.0.0","orientation":"portrait","android":{"package":"com.piggybank.savings"},"plugins":["expo-secure-store"]}}
