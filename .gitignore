@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+
+# Expo / React Native
+.expo/
+.expo-shared/
+web-build/
+android/.gradle/
+ios/Pods/
+
+# Build output
+dist/
+build/
+coverage/
+*.log
+
+# Operating system / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
