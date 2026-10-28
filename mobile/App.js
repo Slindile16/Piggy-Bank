@@ -11,7 +11,7 @@ const sessionStore = {
   remove: () => Platform.OS === 'web' ? Promise.resolve(window.sessionStorage.removeItem('piggy_bank_session')) : SecureStore.deleteItemAsync('session')
 };
 const notify = (title,message) => Platform.OS === 'web' ? window.alert(title+'\n'+message) : Alert.alert(title,message);
-const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
+const fields = [['firstName','First name'],['surname','Surname'],['idNumber','South African ID number'],['address','Residential address'],['mobileNumber','Mobile number (e.g. 0821234567)'],['gender','Gender'],['email','Email address'],['password','Password (12+ characters)'],['confirmPassword','Confirm password']];
 const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
 const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -33,6 +33,8 @@ export default function App() {
   const [screen,setScreen] = useState('loading');
   const [tab,setTab] = useState('Home');
   const [user,setUser] = useState(null);
+  const [profileOpen,setProfileOpen] = useState(false);
+  const [profileForm,setProfileForm] = useState({});
   const [values,setValues] = useState({});
   const [registrationStep,setRegistrationStep] = useState(1);
   const [demoPayment,setDemoPayment] = useState({bank:'',accountType:'',cardConfirmed:false});
@@ -167,10 +169,11 @@ export default function App() {
   })(); }, []);
   const submit = async () => {
     if(screen==='register' && registrationStep===1){
-      if(!values.firstName?.trim()||!values.surname?.trim()||!values.idNumber?.trim()||!values.address?.trim()||!values.gender||!values.email?.trim()||!values.password||values.password.length<12||values.password!==values.confirmPassword)return notify('Complete your details','Fill in all personal information and use matching passwords of at least 12 characters.');
+      if(!values.firstName?.trim()||!values.surname?.trim()||!values.idNumber?.trim()||!values.address?.trim()||!values.mobileNumber?.trim()||!values.gender||!values.email?.trim()||!values.password||values.password.length<12||values.password!==values.confirmPassword)return notify('Complete your details','Fill in all personal information and use matching passwords of at least 12 characters.');
       setRegistrationStep(2);return;
     }
     if(screen==='register' && (!demoPayment.bank||!demoPayment.accountType||!demoPayment.cardConfirmed))return notify('Complete payment setup','Choose a bank and account type, then confirm you understand that only fictional test payment details are supported in this demo.');
+    if (screen==='register' && !/^(?:\\+27|0)[6-8]\\d{8}$/.test(values.mobileNumber||''))return notify('Mobile number','Enter a valid South African mobile number, e.g. 0821234567.');
     if (screen==='register' && values.password!==values.confirmPassword) return notify('Check password','Passwords do not match.');
     setBusy(true);
     try {
@@ -184,8 +187,21 @@ export default function App() {
     } catch(e) { notify('Unable to continue',e.message); }
     finally { setBusy(false); }
   };
+  const openProfile=()=>{setProfileForm({firstName:user?.firstName||'',surname:user?.surname||'',address:user?.address||'',mobileNumber:user?.mobileNumber||'',gender:user?.gender||'Female'});setProfileOpen(true);};
+  const saveProfile=async()=>{
+    if(!profileForm.firstName?.trim()||!profileForm.surname?.trim()||!profileForm.address?.trim()||!profileForm.mobileNumber?.trim())return notify('Complete profile','Please complete all editable fields.');
+    setBusy(true);
+    try{
+      const saved=await sessionStore.get();
+      const response=await fetch(API_URL+'/api/v1/auth/profile',{method:'PATCH',headers:{Authorization:'Bearer '+saved,'Content-Type':'application/json'},body:JSON.stringify(profileForm)});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Unable to update profile.');
+      setUser(data.user);setProfileOpen(false);notify('Profile updated','Your information was saved successfully.');
+    }catch(e){notify('Unable to update profile',e.message);}
+    finally{setBusy(false);}
+  };
   const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
-  const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity')loadDeposits();};
+  const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setProfileOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity')loadDeposits();};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':undefined}>
@@ -210,7 +226,7 @@ export default function App() {
           </View>:(screen==='register'?fields:[['email','Email address'],['password','Password']]).map(([key,label])=><View key={key}>
             <Text style={s.label}>{label}</Text>
             {key==='gender'?<View style={s.chips}>{['Female','Male','Non-binary','Other'].map(g=><TouchableOpacity key={g} onPress={()=>setValues(v=>({...v,gender:g}))} style={[s.chip,values.gender===g&&s.chipSelected]}><Text style={[s.chipText,values.gender===g&&{color:C.white}]}>{g}</Text></TouchableOpacity>)}</View>:
-            <TextInput style={s.input} placeholder={label} placeholderTextColor="#96A39A" value={values[key]||''} onChangeText={v=>setValues(prev=>({...prev,[key]:v}))} autoCapitalize={key==='email'?'none':'sentences'} autoCorrect={false} secureTextEntry={key.toLowerCase().includes('password')} keyboardType={key==='email'?'email-address':key==='idNumber'?'number-pad':'default'}/>}
+            <TextInput style={s.input} placeholder={label} placeholderTextColor="#96A39A" value={values[key]||''} onChangeText={v=>setValues(prev=>({...prev,[key]:v}))} autoCapitalize={key==='email'?'none':'sentences'} autoCorrect={false} secureTextEntry={key.toLowerCase().includes('password')} keyboardType={key==='email'?'email-address':key==='idNumber'||key==='mobileNumber'?'phone-pad':'default'}/>}
           </View>)}
           <Button label={busy?'Please wait...':screen==='register'?(registrationStep===1?'Continue to payment setup':'Create demo account'):'Sign in'} disabled={busy} onPress={submit}/>
           <TouchableOpacity onPress={()=>{setValues({});setRegistrationStep(1);setDemoPayment({bank:'',accountType:'',cardConfirmed:false});setScreen(screen==='register'?'login':'register');}}><Text style={s.link}>{screen==='register'?'Already have an account? Sign in':'New to Piggy Bank? Create an account'}</Text></TouchableOpacity>
@@ -311,7 +327,15 @@ export default function App() {
           </>}
           {tab==='Profile'&&<>
             <Text style={s.eyebrow}>ACCOUNT & SECURITY</Text><Text style={s.title}>Your profile</Text><Text style={s.subtitle}>Manage your personal information and security settings.</Text>
-            <View style={s.profileCard}><View style={s.avatar}><Text style={s.avatarText}>{(user?.firstName||'P').charAt(0).toUpperCase()}</Text></View><View><Text style={s.profileName}>{[user?.firstName,user?.surname].filter(Boolean).join(' ')||'Piggy Bank Saver'}</Text><Text style={s.profileEmail}>{user?.email||'Account holder'}</Text></View></View>
+            <TouchableOpacity style={s.profileCard} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Edit personal information"><View style={s.avatar}><Text style={s.avatarText}>{(user?.firstName||'P').charAt(0).toUpperCase()}</Text></View><View style={{flex:1}}><Text style={s.profileName}>{[user?.firstName,user?.surname].filter(Boolean).join(' ')||'Piggy Bank Saver'}</Text><Text style={s.profileEmail}>{user?.email||'Account holder'}</Text><Text style={[s.greenLink,{marginTop:8}]}>Edit personal information →</Text></View></TouchableOpacity>
+            {profileOpen&&<View style={[s.panel,{marginBottom:22}]}>
+              <Text style={s.sectionTitle}>Update personal information</Text>
+              {([['firstName','First name'],['surname','Surname'],['mobileNumber','Mobile number'],['address','Residential address']]).map(([key,label])=><View key={key}><Text style={s.label}>{label}</Text><TextInput style={s.input} value={profileForm[key]||''} onChangeText={v=>setProfileForm(p=>({...p,[key]:v}))} keyboardType={key==='mobileNumber'?'phone-pad':'default'}/></View>)}
+              <Text style={s.label}>Gender</Text><View style={s.chips}>{['Female','Male','Non-binary','Prefer not to say','Other'].map(g=><TouchableOpacity key={g} onPress={()=>setProfileForm(p=>({...p,gender:g}))} style={[s.chip,profileForm.gender===g&&s.chipSelected]}><Text style={[s.chipText,profileForm.gender===g&&{color:C.white}]}>{g}</Text></TouchableOpacity>)}</View>
+              <Text style={s.emptyText}>Your email and identity number cannot be changed here. Contact verified support for sensitive identity changes when that feature becomes available.</Text>
+              <Button label={busy?'Saving...':'Save profile changes'} disabled={busy} onPress={saveProfile}/>
+              <Button label="Cancel" outline onPress={()=>setProfileOpen(false)}/>
+            </View>}
             <Text style={s.sectionTitle}>Identity & security</Text>
             <View style={s.security}><View style={s.securityBadge}><Text style={s.securityBadgeText}>NOT ENROLLED</Text></View><Text style={s.securityTitle}>Face verification</Text><Text style={s.emptyText}>Required before your first cash-out. Secure biometric enrollment and matching are not available in this demo.</Text>
             <View style={s.faceCircle}><Icon name="profile" size={64} color={C.green}/><Text style={s.faceText}>Face scan preview</Text></View>
