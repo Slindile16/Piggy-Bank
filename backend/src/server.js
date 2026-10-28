@@ -141,6 +141,44 @@ app.post('/api/v1/savings/plans',authenticated,async(req,res)=>{
   } catch(e) { console.error(e); return res.status(500).json({error:'Unable to create savings plan.'}); }
 });
 
+const planUpdateSchema=z.object({
+  name:z.string().trim().min(1).max(100),
+  targetAmount:z.number().finite().positive().max(100000000)
+}).strict();
+app.patch('/api/v1/savings/plans/:id',authenticated,async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({error:'Invalid plan ID.'});
+  const parsed=planUpdateSchema.safeParse(req.body);
+  if(!parsed.success) return res.status(400).json({error:'Enter a valid name and target amount.'});
+  const cents=Math.round(parsed.data.targetAmount*100);
+  if(!Number.isSafeInteger(cents)||cents<1||Math.abs(parsed.data.targetAmount*100-cents)>0.000001)
+    return res.status(400).json({error:'Target must have at most two decimal places.'});
+  const client=await db.connect().catch(()=>null);
+  if(!client) return res.status(500).json({error:'Database unavailable.'});
+  try{
+    await client.query('BEGIN');
+    const current=await client.query('SELECT * FROM savings_plans WHERE id=$1 AND user_id=$2 FOR UPDATE',[req.params.id,req.userId]);
+    if(!current.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Plan not found.'});}
+    const old=current.rows[0];
+    if(cents<Number(old.saved_cents)){await client.query('ROLLBACK');return res.status(400).json({error:'Target cannot be lower than the amount already saved.'});}
+    if(old.name!==parsed.data.name||Number(old.target_cents)!==cents){
+      await client.query('INSERT INTO savings_plan_changes(id,user_id,plan_id,old_name,new_name,old_target_cents,new_target_cents) VALUES($1,$2,$3,$4,$5,$6,$7)',[randomUUID(),req.userId,old.id,old.name,parsed.data.name,old.target_cents,cents]);
+    }
+    const updated=await client.query('UPDATE savings_plans SET name=$1,target_cents=$2 WHERE id=$3 AND user_id=$4 RETURNING id,name,plan_type,duration_months,target_cents,saved_cents,starts_on::text AS starts_on,matures_on::text AS matures_on,created_at',[parsed.data.name,cents,old.id,req.userId]);
+    await client.query('COMMIT');
+    return res.json({plan:publicPlan(updated.rows[0])});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error(e);return res.status(500).json({error:'Unable to update plan. Check that migration 004 has been run.'});}
+  finally{client.release();}
+});
+app.get('/api/v1/savings/plans/:id/changes',authenticated,async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({error:'Invalid plan ID.'});
+  try{
+    const owned=await db.query('SELECT id FROM savings_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.userId]);
+    if(!owned.rows.length) return res.status(404).json({error:'Plan not found.'});
+    const result=await db.query('SELECT id,old_name,new_name,old_target_cents,new_target_cents,created_at FROM savings_plan_changes WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 100',[req.params.id,req.userId]);
+    return res.json({changes:result.rows.map(r=>({id:r.id,oldName:r.old_name,newName:r.new_name,oldTarget:Number(r.old_target_cents)/100,newTarget:Number(r.new_target_cents)/100,createdAt:r.created_at}))});
+  }catch(e){console.error(e);return res.status(500).json({error:'Unable to load plan changes.'});}
+});
+
 const depositSchema=z.object({
   planId:z.string().uuid(),
   amount:z.number().finite().positive().max(100000000)
