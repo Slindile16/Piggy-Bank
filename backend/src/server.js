@@ -18,7 +18,7 @@ app.use(express.json({ limit: '16kb' }));
 app.use('/api/v1/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }));
 const registration = z.object({
   termsAccepted:z.literal(true),
-  termsVersion:z.literal('2026-10-28-demo-v1'),
+  termsVersion:z.literal('2026-10-28-demo-v2'),
   firstName: z.string().trim().min(1).max(100),
   surname: z.string().trim().min(1).max(100),
   idNumber: z.string().regex(/^\d{13}$/),
