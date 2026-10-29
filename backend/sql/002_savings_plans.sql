@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS savings_plans (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   plan_type VARCHAR(20) NOT NULL CHECK (plan_type IN ('starter','builder','visionary','custom')),
-  duration_months INTEGER NOT NULL CHECK (duration_months BETWEEN 1 AND 60),
+  duration_months INTEGER NOT NULL CHECK (duration_months BETWEEN 1 AND 360),
   target_cents BIGINT NOT NULL CHECK (target_cents > 0),
   saved_cents BIGINT NOT NULL DEFAULT 0 CHECK (saved_cents >= 0),
   starts_on DATE NOT NULL,
