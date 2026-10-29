@@ -195,6 +195,25 @@ app.patch('/api/v1/savings/plans/:id',authenticated,async(req,res)=>{
   }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error(e);return res.status(500).json({error:'Unable to update plan. Check that migration 004 has been run.'});}
   finally{client.release();}
 });
+app.delete('/api/v1/savings/plans/:id',authenticated,async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid plan ID.'});
+  const client=await db.connect().catch(()=>null);
+  if(!client)return res.status(500).json({error:'Database unavailable.'});
+  try{
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,saved_cents FROM savings_plans WHERE id=$1 AND user_id=$2 FOR UPDATE',[req.params.id,req.userId]);
+    if(!found.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Plan not found.'});}
+    if(Number(found.rows[0].saved_cents)!==0){await client.query('ROLLBACK');return res.status(409).json({error:'Only plans with a R0.00 balance can be deleted.'});}
+    const deposits=await client.query('SELECT 1 FROM savings_deposits WHERE plan_id=$1 LIMIT 1',[req.params.id]);
+    const withdrawals=await client.query('SELECT 1 FROM savings_withdrawals WHERE plan_id=$1 LIMIT 1',[req.params.id]);
+    if(deposits.rowCount||withdrawals.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'This plan has transaction history and cannot be deleted, even with a R0.00 balance.'});}
+    await client.query('DELETE FROM savings_plan_changes WHERE plan_id=$1 AND user_id=$2',[req.params.id,req.userId]);
+    await client.query('DELETE FROM savings_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.userId]);
+    await client.query('COMMIT');
+    return res.json({deleted:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});console.error(e);return res.status(500).json({error:'Unable to delete plan.'});}
+  finally{client.release();}
+});
 app.get('/api/v1/savings/plans/:id/changes',authenticated,async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success) return res.status(400).json({error:'Invalid plan ID.'});
   try{
