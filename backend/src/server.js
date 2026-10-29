@@ -294,4 +294,40 @@ app.put('/api/v1/auth/demo-banking',authenticated,async(req,res)=>{
   }catch(e){console.error(e);return res.status(500).json({error:'Unable to update demo banking preferences. Run migration 007.'});}
 });
 
+
+const childSchema=z.object({
+  firstName:z.string().trim().min(1).max(80),
+  surname:z.string().trim().min(1).max(80),
+  dateOfBirth:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  relationship:z.enum(['Mother','Father','Legal Guardian']),
+  avatarColor:z.enum(['emerald','gold','rose','sage']).default('emerald')
+}).strict();
+function validChildDate(value){
+  const date=new Date(value+'T00:00:00Z');
+  return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value&&date<=new Date()&&date.getUTCFullYear()>=1900;
+}
+function publicChild(row){return {id:row.id,firstName:row.first_name,surname:row.surname,dateOfBirth:row.date_of_birth,relationship:row.relationship,avatarColor:row.avatar_color,createdAt:row.created_at};}
+app.get('/api/v1/kids',authenticated,async(req,res)=>{
+  try{const result=await db.query('SELECT id,first_name,surname,date_of_birth::text AS date_of_birth,relationship,avatar_color,created_at FROM child_profiles WHERE guardian_user_id=$1 ORDER BY created_at DESC',[req.userId]);return res.json({children:result.rows.map(publicChild)});}
+  catch(e){console.error(e);return res.status(500).json({error:'Unable to load child profiles. Run migration 008.'});}
+});
+app.post('/api/v1/kids',authenticated,async(req,res)=>{
+  const parsed=childSchema.safeParse(req.body);
+  if(!parsed.success||!validChildDate(parsed.data?.dateOfBirth||''))return res.status(400).json({error:'Enter valid child details and a date of birth in YYYY-MM-DD format.'});
+  const c=parsed.data;
+  try{const result=await db.query('INSERT INTO child_profiles(id,guardian_user_id,first_name,surname,date_of_birth,relationship,avatar_color) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,first_name,surname,date_of_birth::text AS date_of_birth,relationship,avatar_color,created_at',[randomUUID(),req.userId,c.firstName,c.surname,c.dateOfBirth,c.relationship,c.avatarColor]);return res.status(201).json({child:publicChild(result.rows[0])});}
+  catch(e){console.error(e);return res.status(500).json({error:'Unable to add child profile.'});}
+});
+app.patch('/api/v1/kids/:id',authenticated,async(req,res)=>{
+  const parsed=childSchema.safeParse(req.body);
+  if(!parsed.success||!validChildDate(parsed.data?.dateOfBirth||''))return res.status(400).json({error:'Enter valid child details.'});
+  const c=parsed.data;
+  try{const result=await db.query('UPDATE child_profiles SET first_name=$1,surname=$2,date_of_birth=$3,relationship=$4,avatar_color=$5,updated_at=NOW() WHERE id=$6 AND guardian_user_id=$7 RETURNING id,first_name,surname,date_of_birth::text AS date_of_birth,relationship,avatar_color,created_at',[c.firstName,c.surname,c.dateOfBirth,c.relationship,c.avatarColor,req.params.id,req.userId]);if(!result.rowCount)return res.status(404).json({error:'Child profile not found.'});return res.json({child:publicChild(result.rows[0])});}
+  catch(e){console.error(e);return res.status(500).json({error:'Unable to update child profile.'});}
+});
+app.delete('/api/v1/kids/:id',authenticated,async(req,res)=>{
+  try{const result=await db.query('DELETE FROM child_profiles WHERE id=$1 AND guardian_user_id=$2 RETURNING id',[req.params.id,req.userId]);if(!result.rowCount)return res.status(404).json({error:'Child profile not found.'});return res.json({deleted:true});}
+  catch(e){console.error(e);return res.status(500).json({error:'Unable to remove child profile.'});}
+});
+
 app.listen(Number(process.env.PORT || 4000), '0.0.0.0', () => console.log('Piggy Bank API running'));
