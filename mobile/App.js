@@ -139,6 +139,25 @@ export default function App() {
       if(response.ok)setPlanChanges(data.changes||[]);
     }catch(e){console.warn('Unable to load change history',e);}
   };
+  const deleteEmptyPlan = async plan => {
+    if(Number(plan.savedAmount)!==0)return notify('Cannot delete plan','Only plans with a R0.00 balance can be deleted.');
+    const proceed=async()=>{
+      setBusy(true);
+      try{
+        const token=await sessionStore.get();
+        const response=await fetch(API_URL+'/api/v1/savings/plans/'+plan.id,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||'Unable to delete plan.');
+        setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);
+        await loadPlans();
+        notify('Plan deleted','Your empty demo savings plan has been removed.');
+      }catch(e){notify('Unable to delete plan',e.message);}
+      finally{setBusy(false);}
+    };
+    const question='Permanently delete "'+plan.name+'"? This cannot be undone. Plans with any transaction history cannot be deleted.';
+    if(Platform.OS==='web'){if(window.confirm(question))await proceed();}
+    else Alert.alert('Delete empty plan',question,[{text:'Cancel',style:'cancel'},{text:'Delete plan',style:'destructive',onPress:proceed}]);
+  };
   const openPlanDetails = planId => { setSelectedPlan(null);setDepositOpen(false);setEditingPlan(false);setWithdrawOpen(false);setWithdrawAmount('');setWithdrawConfirmed(false);setPlanChanges([]);setDetailPlanId(planId);setTab('Savings');loadDeposits();loadPlanChanges(planId); };
   const savePlanEdit = async () => {
     const p=savedPlans.find(item=>item.id===detailPlanId);
@@ -386,6 +405,7 @@ export default function App() {
                   <Button label="Add savings" onPress={()=>beginDeposit(p.id)}/>
                   <Button label="Request demo withdrawal" outline onPress={()=>{setWithdrawOpen(v=>!v);setWithdrawAmount('');setWithdrawConfirmed(false);}}/>
                   {withdrawOpen&&<View style={[s.panel,{marginTop:16}]}><Text style={s.sectionTitle}>Withdraw savings · Demo</Text><Text style={s.emptyText}>Choose a partial amount or the full balance. This changes simulated savings only. No real money is paid out and no identity or bank verification is performed.</Text><Text style={s.label}>Withdrawal amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} keyboardType="decimal-pad" placeholder="0.00" value={withdrawAmount} onChangeText={setWithdrawAmount}/></View><TouchableOpacity onPress={()=>setWithdrawAmount(Number(p.savedAmount).toFixed(2))}><Text style={s.greenLink}>Use full balance ({money(p.savedAmount)})</Text></TouchableOpacity><View style={s.notice}><Text style={s.noticeText}>Available: {money(p.savedAmount)}{'\n'}{daysUntil(p.maturesOn)>0?'Early withdrawal · 2% penalty':'Matured · 0% penalty'}{'\n'}Penalty: {money(/^\d+(\.\d{1,2})?$/.test(withdrawAmount)&&Number(withdrawAmount)>0?(daysUntil(p.maturesOn)>0?Math.round(Number(withdrawAmount)*2)/100:0):0)}{'\n'}Simulated payout: {money(/^\d+(\.\d{1,2})?$/.test(withdrawAmount)&&Number(withdrawAmount)>0?Number(withdrawAmount)-(daysUntil(p.maturesOn)>0?Math.round(Number(withdrawAmount)*2)/100:0):0)}</Text></View><TouchableOpacity style={s.planChoice} accessibilityRole="checkbox" accessibilityState={{checked:withdrawConfirmed}} onPress={()=>setWithdrawConfirmed(v=>!v)}><Text style={s.planDetail}>{withdrawConfirmed?'☑':'☐'} I understand this is a simulation, not a real withdrawal or verification.</Text></TouchableOpacity><Button label={busy?'Processing...':'Review demo withdrawal'} disabled={busy||!withdrawConfirmed||Number(p.savedAmount)<=0} onPress={()=>submitWithdrawal(p)}/><Button label="Cancel" outline onPress={()=>setWithdrawOpen(false)}/></View>}
+                  {Number(p.savedAmount)===0&&<Button label="Delete empty plan" outline disabled={busy} onPress={()=>deleteEmptyPlan(p)}/>}
                   <Button label="Edit savings goal" outline onPress={()=>{setEditName(p.name);setEditTarget(String(p.targetAmount));setEditingPlan(true);}}/>
                   {editingPlan&&<View style={[s.panel,{marginTop:16}]}>
                     <Text style={s.sectionTitle}>Edit your goal</Text>
