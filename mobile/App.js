@@ -42,6 +42,31 @@ const Icon = ({name,size=22,color=C.green}) => {
 };
 export default function App() {
   const [screen,setScreen] = useState('loading');
+  const [children,setChildren]=useState([]);
+  const [kidsOpen,setKidsOpen]=useState(false);
+  const [childEditingId,setChildEditingId]=useState(null);
+  const [childForm,setChildForm]=useState({firstName:'',surname:'',dateOfBirth:'',relationship:'Legal Guardian',avatarColor:'emerald'});
+  const loadChildren=async()=>{
+    try{const token=await sessionStore.get();if(!token)return;const response=await fetch(API_URL+'/api/v1/kids',{headers:{Authorization:'Bearer '+token}});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to load children.');setChildren(data.children||[]);}
+    catch(e){notify('Piggy Bank Kids',e.message);}
+  };
+  const startChild=(child=null)=>{
+    setChildEditingId(child?.id||null);
+    setChildForm(child?{firstName:child.firstName,surname:child.surname,dateOfBirth:child.dateOfBirth,relationship:child.relationship,avatarColor:child.avatarColor||'emerald'}:{firstName:'',surname:'',dateOfBirth:'',relationship:'Legal Guardian',avatarColor:'emerald'});
+    setKidsOpen(true);setTab('Savings');
+  };
+  const saveChild=async()=>{
+    if(!childForm.firstName.trim()||!childForm.surname.trim()||!/^\d{4}-\d{2}-\d{2}$/.test(childForm.dateOfBirth))return notify('Child details','Enter first name, surname and a date of birth as YYYY-MM-DD.');
+    setBusy(true);
+    try{const token=await sessionStore.get();const response=await fetch(API_URL+'/api/v1/kids'+(childEditingId?'/'+childEditingId:''),{method:childEditingId?'PATCH':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(childForm)});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to save child.');setKidsOpen(false);await loadChildren();notify('Piggy Bank Kids',childEditingId?'Child profile updated.':'Child profile added. No real child verification is performed.');}
+    catch(e){notify('Unable to save child',e.message);}finally{setBusy(false);}
+  };
+  const removeChild=async(child)=>{
+    const proceed=async()=>{setBusy(true);try{const token=await sessionStore.get();const response=await fetch(API_URL+'/api/v1/kids/'+child.id,{method:'DELETE',headers:{Authorization:'Bearer '+token}});const data=await response.json();if(!response.ok)throw new Error(data.error||'Unable to remove child.');await loadChildren();notify('Removed','Child profile removed.');}catch(e){notify('Unable to remove child',e.message);}finally{setBusy(false);}};
+    if(Platform.OS==='web'){if(window.confirm('Remove '+child.firstName+'\'s demo child profile?'))await proceed();}
+    else Alert.alert('Remove child profile','Remove '+child.firstName+'\'s demo child profile?',[{text:'Cancel',style:'cancel'},{text:'Remove',style:'destructive',onPress:proceed}]);
+  };
+
   const [tab,setTab] = useState('Home');
   const [user,setUser] = useState(null);
   const [profileOpen,setProfileOpen] = useState(false);
@@ -207,7 +232,7 @@ export default function App() {
       const saved = await sessionStore.get();
       if (saved) {
         const response = await fetch(API_URL+'/api/v1/auth/me',{headers:{Authorization:'Bearer '+saved}});
-        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadWithdrawals();loadBanking();loadDeposits();loadWithdrawals();return; }
+        if (response.ok) { setUser((await response.json()).user);setScreen('home');loadPlans();loadWithdrawals();loadBanking();loadDeposits();loadChildren();return; }
         await sessionStore.remove();
       }
     } catch {}
@@ -259,7 +284,7 @@ export default function App() {
     }catch(e){notify('Unable to update profile',e.message);}
     finally{setBusy(false);}
   };
-  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setDeposits([]);setWithdrawals([]);setSavedBanking(null);setBankingOpen(false);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
+  const logout=async()=>{await sessionStore.remove();setUser(null);setValues({});setSavedPlans([]);setChildren([]);setKidsOpen(false);setDeposits([]);setWithdrawals([]);setSavedBanking(null);setBankingOpen(false);setDepositOpen(false);setDetailPlanId(null);setEditingPlan(false);setSelectedPlan(null);setScreen('login');};
   const nav=target=>{setSelectedPlan(null);setDepositOpen(false);setDetailPlanId(null);setProfileOpen(false);setTab(target);if(target==='Savings'||target==='Home')loadPlans();if(target==='Activity'){loadDeposits();loadWithdrawals();}};
   if(screen==='loading') return <View style={s.center}><ActivityIndicator size="large" color={C.green}/></View>;
   const loggedIn=screen==='home';
