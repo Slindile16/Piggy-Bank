@@ -114,7 +114,7 @@ app.patch('/api/v1/auth/profile',async(req,res)=>{
 const planSchema = z.object({
   name: z.string().trim().min(1).max(100),
   planType: z.enum(['starter','builder','visionary','custom']),
-  durationMonths: z.number().int().min(1).max(60),
+  durationMonths: z.number().int().min(1).max(360),
   targetAmount: z.number().finite().positive().max(100000000)
 }).strict();
 const fixedDurations = { starter: 6, builder: 12, visionary: 18 };
