@@ -23,7 +23,7 @@ const MATURITY_GUIDE=[
 ['What if verification fails?','If your identity, face/liveness verification or bank account ownership does not match, the withdrawal is blocked pending secure review. Do not share passwords, OTPs, PINs or CVVs with anyone.'],
 ['What works today?','Piggy Bank currently uses simulated deposits and balances. No real funds are held. Demo withdrawals change only simulated balances; biometric matching and bank payouts are not available yet.']
 ];
-const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–60 months'}];
+const plans = [{type:'starter',months:6,title:'The Starter',detail:'Short-term focus'},{type:'builder',months:12,title:'The Builder',detail:'Build lasting habits'},{type:'visionary',months:18,title:'The Visionary',detail:'Your long-term goal'},{type:'custom',months:null,title:'Custom Plan',detail:'Choose 1–360 months'}];
 const daysUntil = date => Math.max(0,Math.ceil((new Date(date+'T00:00:00Z').getTime()-Date.now())/86400000));
 const money = amount => 'R'+Number(amount||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const demoMessage = () => notify('Demo feature','Savings and withdrawals are not yet connected to the backend. No money is being moved.');
@@ -211,8 +211,8 @@ export default function App() {
   const createPlan = async () => {
     const duration=Number(planForm.durationMonths);
     const amount=Number(planForm.targetAmount);
-    if (!planForm.name.trim() || !Number.isInteger(duration) || duration<1 || duration>60 || !Number.isFinite(amount) || amount<=0 || amount>100000000 || !/^\d+(\.\d{1,2})?$/.test(planForm.targetAmount.trim())) {
-      return notify('Check your plan','Enter a name, a valid duration (1–60 months), and a target amount greater than R0 with at most two decimal places.');
+    if (!planForm.name.trim() || !Number.isInteger(duration) || duration<1 || duration>360 || !Number.isFinite(amount) || amount<=0 || amount>100000000 || !/^\d+(\.\d{1,2})?$/.test(planForm.targetAmount.trim())) {
+      return notify('Check your plan','Enter a name, a valid duration (1–360 months), and a target amount greater than R0 with at most two decimal places.');
     }
     setBusy(true);
     try {
@@ -409,11 +409,11 @@ export default function App() {
               <Text style={s.planDetail}>Your savings will be locked for {selectedPlan.type==='custom'?'your chosen duration':selectedPlan.months+' months'}.</Text>
               <Text style={[s.label,{marginTop:20}]}>Savings goal name</Text><TextInput style={s.input} placeholder="e.g. My First Car" value={planForm.name} onChangeText={name=>setPlanForm(v=>({...v,name}))}/>
               <Text style={s.label}>Target amount</Text><View style={s.amountRow}><Text style={s.amountPrefix}>R</Text><TextInput style={s.amountInput} placeholder="5000" keyboardType="decimal-pad" value={planForm.targetAmount} onChangeText={targetAmount=>setPlanForm(v=>({...v,targetAmount}))}/></View>
-              {selectedPlan.type==='custom'&&<><Text style={s.label}>Duration in months (1–60)</Text><TextInput style={s.input} keyboardType="number-pad" value={planForm.durationMonths} onChangeText={durationMonths=>setPlanForm(v=>({...v,durationMonths}))}/></>}
+              {selectedPlan.type==='custom'&&<><Text style={s.label}>Duration in months (1–360)</Text><TextInput style={s.input} keyboardType="number-pad" value={planForm.durationMonths} onChangeText={durationMonths=>setPlanForm(v=>({...v,durationMonths}))}/></>}
               <View style={s.notice}><Text style={s.noticeText}>Locked for {planForm.durationMonths||'?'} months. Suggested monthly savings: {Number(planForm.targetAmount)>0&&Number(planForm.durationMonths)>0?money(Number(planForm.targetAmount)/Number(planForm.durationMonths)):'—'}. Cash-out is not available in this demo.</Text></View>
               <Button label={busy?'Creating plan...':'Create locked savings plan'} disabled={busy} onPress={createPlan}/>
             </View> : <>
-              {plans.map(p=><View key={p.type} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months?p.months+' MONTHS':'1–60 MONTHS'}</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings plan</Text><Button label="Choose plan" onPress={()=>beginPlan(p)} outline/></View>)}
+              {plans.map(p=><View key={p.type} style={s.plan}><View style={s.planTop}><Text style={s.planTitle}>{p.title}</Text><Text style={s.term}>{p.months?p.months+' MONTHS':'1–360 MONTHS'}</Text></View><Text style={s.planDetail}>{p.detail}</Text><View style={s.planLine}/><Text style={s.planDetail}>Locked savings plan</Text><Button label="Choose plan" onPress={()=>beginPlan(p)} outline/></View>)}
               <Text style={s.sectionTitle}>Your saved plans ({savedPlans.length})</Text>
               {plansLoading&&<ActivityIndicator color={C.green}/>}
               {savedPlans.map(p=><View key={p.id} style={s.plan}><TouchableOpacity onPress={()=>openPlanDetails(p.id)} accessibilityRole="button"><Text style={s.planTitle}>{p.name}  ›</Text><Text style={s.planDetail}>{p.durationMonths} months · Matures {p.maturesOn}</Text><Text style={s.planDetail}>Target: {money(p.targetAmount)} · Saved: {money(p.savedAmount)}</Text><Text style={[s.greenLink,{marginTop:12}]}>View plan details →</Text></TouchableOpacity><Button label="Add savings" onPress={()=>beginDeposit(p.id)} outline/></View>)}
